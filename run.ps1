@@ -16,18 +16,43 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DefaultOpenCvBin = Join-Path $env:LOCALAPPDATA "rtk\opencv-4.13.0\opencv\build\x64\vc16\bin"
-if (Test-Path $DefaultOpenCvBin) {
-    $env:PATH = "$DefaultOpenCvBin;$env:PATH"
+
+$OpenCVVersion = if ([string]::IsNullOrWhiteSpace($env:MVO_OPENCV_VERSION)) {
+    "4.13.0"
+} else {
+    $env:MVO_OPENCV_VERSION
 }
-$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
-if ($null -ne $PythonCommand) {
-    $PythonUserScripts = python -c "import sysconfig; print(sysconfig.get_path('scripts', scheme='nt_user'))" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $PythonUserScripts -ne "" -and
-        (Test-Path $PythonUserScripts)) {
-        $env:PATH = "$PythonUserScripts;$env:PATH"
+
+function Add-PathDir {
+    param([string]$PathDir)
+
+    if ($PathDir -ne "" -and
+        (Test-Path $PathDir) -and
+        (($env:PATH -split [IO.Path]::PathSeparator) -notcontains $PathDir)) {
+        $env:PATH = "$PathDir$([IO.Path]::PathSeparator)$env:PATH"
     }
 }
+
+function Add-PythonUserScriptsToPath {
+    foreach ($PythonCmd in @("py", "python", "python3")) {
+        if (Get-Command $PythonCmd -ErrorAction SilentlyContinue) {
+            $UserBase = & $PythonCmd -c "import site; print(site.USER_BASE)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $UserBase -ne "") {
+                Add-PathDir (Join-Path $UserBase "Scripts")
+                Add-PathDir (Join-Path $UserBase "bin")
+            }
+        }
+    }
+
+    if ($env:APPDATA -ne "") {
+        Get-ChildItem -Directory -Path (Join-Path $env:APPDATA "Python") -Filter "Python*" -ErrorAction SilentlyContinue |
+            ForEach-Object { Add-PathDir (Join-Path $_.FullName "Scripts") }
+    }
+}
+
+$DefaultOpenCvBin = Join-Path $env:LOCALAPPDATA "rtk\opencv-$OpenCVVersion\opencv\build\x64\vc16\bin"
+Add-PathDir $DefaultOpenCvBin
+Add-PythonUserScriptsToPath
 
 $Exe = Join-Path $ScriptDir "build\$Config\mvo_cvlib.exe"
 if (!(Test-Path $Exe)) {

@@ -22,6 +22,37 @@ to_unix_path() {
     fi
 }
 
+add_path_dir() {
+    if [[ -d "$1" && ":$PATH:" != *":$1:"* ]]; then
+        export PATH="$1:$PATH"
+    fi
+}
+
+add_python_user_scripts_to_path() {
+    local user_base=""
+    local user_base_unix=""
+    local python_cmd=""
+
+    for python_cmd in py python3 python; do
+        if command -v "$python_cmd" >/dev/null 2>&1; then
+            user_base="$("$python_cmd" -c 'import site; print(site.USER_BASE)' 2>/dev/null || true)"
+            if [[ -n "$user_base" ]]; then
+                user_base_unix="$(to_unix_path "$user_base")"
+                add_path_dir "$user_base_unix/Scripts"
+                add_path_dir "$user_base_unix/bin"
+            fi
+        fi
+    done
+
+    if [[ -n "${APPDATA:-}" ]]; then
+        local appdata_unix
+        appdata_unix="$(to_unix_path "$APPDATA")"
+        for scripts_dir in "$appdata_unix"/Python/Python*/Scripts; do
+            add_path_dir "$scripts_dir"
+        done
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --config)
@@ -84,21 +115,12 @@ if [[ "$config" != "Release" && "$config" != "Debug" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+opencv_version="${MVO_OPENCV_VERSION:-4.13.0}"
 if [[ -n "${LOCALAPPDATA:-}" ]]; then
-    opencv_bin="$(to_unix_path "$LOCALAPPDATA")/rtk/opencv-4.13.0/opencv/build/x64/vc16/bin"
-    if [[ -d "$opencv_bin" ]]; then
-        export PATH="$opencv_bin:$PATH"
-    fi
+    opencv_bin="$(to_unix_path "$LOCALAPPDATA")/rtk/opencv-$opencv_version/opencv/build/x64/vc16/bin"
+    add_path_dir "$opencv_bin"
 fi
-if command -v python >/dev/null 2>&1; then
-    python_user_scripts="$(python -c 'import sysconfig; print(sysconfig.get_path("scripts", scheme="nt_user"))' 2>/dev/null || true)"
-    if [[ -n "$python_user_scripts" ]]; then
-        python_user_scripts="$(to_unix_path "$python_user_scripts")"
-        if [[ -d "$python_user_scripts" ]]; then
-            export PATH="$python_user_scripts:$PATH"
-        fi
-    fi
-fi
+add_python_user_scripts_to_path
 
 exe="$script_dir/build/$config/mvo_cvlib.exe"
 if [[ ! -x "$exe" ]]; then
