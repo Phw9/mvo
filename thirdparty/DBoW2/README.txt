@@ -5,3 +5,9 @@ All files included in this version are BSD, see LICENSE.txt
 We also use Random.h, Random.cpp, Timestamp.pp and Timestamp.h from DLib/DUtils.
 See the original DLib library at: https://github.com/dorian3d/DLib
 All files included in this version are BSD, see LICENSE.txt
+
+MVO keeps prebuilt DBoW2 libraries under lib/:
+- libDBoW2.a
+- libDBoW2.so
+- Debug/DBoW2.lib
+- Release/DBoW2.lib

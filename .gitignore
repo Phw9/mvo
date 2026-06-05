@@ -1,3 +1,11 @@
 build/
 thirdparty/DBoW2/build/
-thirdparty/DBoW2/lib/
+thirdparty/DBoW2/lib/*
+!thirdparty/DBoW2/lib/libDBoW2.a
+!thirdparty/DBoW2/lib/libDBoW2.so
+!thirdparty/DBoW2/lib/Debug/
+thirdparty/DBoW2/lib/Debug/*
+!thirdparty/DBoW2/lib/Debug/DBoW2.lib
+!thirdparty/DBoW2/lib/Release/
+thirdparty/DBoW2/lib/Release/*
+!thirdparty/DBoW2/lib/Release/DBoW2.lib
