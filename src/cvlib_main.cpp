@@ -1,4 +1,4 @@
-﻿#include "mvo/app.h"
+#include "app.h"
 
 int main(int argc, char** argv) {
     const mvo::AppConfig config = mvo::parse_args(argc, argv);

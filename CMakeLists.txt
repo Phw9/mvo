@@ -21,7 +21,7 @@ find_package(OpenCV REQUIRED COMPONENTS
 )
 
 set(MVO_CVLIB_INCLUDE_DIR "${MVO_CVLIB_ROOT}/include")
-if(NOT EXISTS "${MVO_CVLIB_INCLUDE_DIR}/cvlib/types.h")
+if(NOT EXISTS "${MVO_CVLIB_INCLUDE_DIR}/types.h")
     message(FATAL_ERROR
         "Bundled cvlib headers not found: ${MVO_CVLIB_INCLUDE_DIR}. "
         "Run bundle_cvlib.ps1 or bundle_cvlib.sh to refresh the package.")
@@ -108,7 +108,65 @@ if("Release" IN_LIST _mvo_cvlib_imported_configs)
     endif()
 endif()
 
-add_subdirectory(thirdparty/DBoW2)
+set(MVO_DBOW2_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/DBoW2" CACHE PATH
+    "Path to bundled DBoW2 sources and prebuilt library")
+set(_mvo_dbow2_imported_configs)
+if(MSVC)
+    foreach(_mvo_config IN ITEMS Release Debug RelWithDebInfo MinSizeRel)
+        string(TOLOWER "${_mvo_config}" _mvo_config_lower)
+        string(TOUPPER "${_mvo_config}" _mvo_config_upper)
+        set(_mvo_dbow2_library)
+        foreach(_mvo_candidate IN ITEMS
+                "${MVO_DBOW2_ROOT}/lib/${_mvo_config}/DBoW2.lib"
+                "${MVO_DBOW2_ROOT}/lib/${_mvo_config_lower}/DBoW2.lib"
+                "${MVO_DBOW2_ROOT}/lib/DBoW2.lib")
+            if(NOT _mvo_dbow2_library AND EXISTS "${_mvo_candidate}")
+                set(_mvo_dbow2_library "${_mvo_candidate}")
+            endif()
+        endforeach()
+        if(_mvo_dbow2_library)
+            list(APPEND _mvo_dbow2_imported_configs "${_mvo_config}")
+            if(NOT TARGET DBoW2)
+                add_library(DBoW2 UNKNOWN IMPORTED GLOBAL)
+                set_target_properties(DBoW2 PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${MVO_DBOW2_ROOT}")
+                target_link_libraries(DBoW2 INTERFACE ${OpenCV_LIBS})
+            endif()
+            set_property(TARGET DBoW2 APPEND PROPERTY
+                IMPORTED_CONFIGURATIONS "${_mvo_config}")
+            set_target_properties(DBoW2 PROPERTIES
+                "IMPORTED_LOCATION_${_mvo_config_upper}" "${_mvo_dbow2_library}")
+        endif()
+    endforeach()
+    if(TARGET DBoW2 AND "Release" IN_LIST _mvo_dbow2_imported_configs)
+        if(NOT "RelWithDebInfo" IN_LIST _mvo_dbow2_imported_configs)
+            set_target_properties(DBoW2 PROPERTIES
+                MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
+        endif()
+        if(NOT "MinSizeRel" IN_LIST _mvo_dbow2_imported_configs)
+            set_target_properties(DBoW2 PROPERTIES
+                MAP_IMPORTED_CONFIG_MINSIZEREL Release)
+        endif()
+    endif()
+else()
+    set(_mvo_dbow2_library)
+    foreach(_mvo_dbow2_name IN ITEMS libDBoW2.a libDBoW2.so)
+        if(NOT _mvo_dbow2_library AND EXISTS "${MVO_DBOW2_ROOT}/lib/${_mvo_dbow2_name}")
+            set(_mvo_dbow2_library "${MVO_DBOW2_ROOT}/lib/${_mvo_dbow2_name}")
+        endif()
+    endforeach()
+    if(_mvo_dbow2_library)
+        add_library(DBoW2 UNKNOWN IMPORTED GLOBAL)
+        set_target_properties(DBoW2 PROPERTIES
+            IMPORTED_LOCATION "${_mvo_dbow2_library}"
+            INTERFACE_INCLUDE_DIRECTORIES "${MVO_DBOW2_ROOT}")
+        target_link_libraries(DBoW2 INTERFACE ${OpenCV_LIBS})
+    endif()
+endif()
+
+if(NOT TARGET DBoW2)
+    add_subdirectory(thirdparty/DBoW2)
+endif()
 
 add_executable(mvo_cvlib
     src/app.cpp
@@ -126,6 +184,9 @@ add_executable(mvo_cvlib
     src/cvlib_main.cpp
 )
 
+target_include_directories(mvo_cvlib BEFORE PRIVATE
+    ${MVO_CVLIB_INCLUDE_DIR}
+)
 target_include_directories(mvo_cvlib PRIVATE
     include
     thirdparty/DBoW2

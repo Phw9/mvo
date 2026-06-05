@@ -62,7 +62,7 @@ MVO/
       bundle_adjustment.json
       loop_closure.json
       visualization.json
-  include/mvo/
+  include/
     app.h
     bundle_adjustment.h
     config.h

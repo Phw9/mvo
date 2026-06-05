@@ -18,7 +18,7 @@ pose estimation, bundle adjustment, configuration, or visualization.
 ## Working Loop
 
 1. Inspect `configs/kitti_image_sequence.json` and `configs/parameters/*.json`.
-2. Trace the relevant module in `include/mvo` and `src`.
+2. Trace the relevant module in `include` and `src`.
 3. Keep algorithm thresholds configurable in the matching parameter JSON file.
 4. Verify with the short run command before finishing.
 5. If visualization changes, verify Rerun still launches by default or saves an

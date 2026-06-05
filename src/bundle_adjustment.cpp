@@ -1,10 +1,10 @@
-#include "mvo/bundle_adjustment.h"
+#include "bundle_adjustment.h"
 
-#include "mvo/converter.h"
-#include "mvo/visualization.h"
+#include "converter.h"
+#include "visualization.h"
 
-#include "cvlib/calib3d/bundle_adjustment.h"
-#include "cvlib/optimize/loss.h"
+#include <calib3d/bundle_adjustment.h>
+#include <optimize/loss.h>
 
 #include <algorithm>
 #include <cmath>

@@ -236,6 +236,19 @@ rerun_is_available() {
     command -v rerun >/dev/null 2>&1
 }
 
+cvlib_is_available() {
+    local lib_dir="$script_dir/thirdparty/cvlib/lib/$cvlib_platform/$config_lower"
+    local library_name=""
+
+    for library_name in "${cvlib_library_names[@]}"; do
+        if [[ -f "$lib_dir/$library_name" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build_dir="$script_dir/build"
 
@@ -281,21 +294,20 @@ fi
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
         cvlib_platform="msvc"
-        cvlib_library_name="cvlib_core.lib"
+        cvlib_library_names=(cvlib_core.lib)
         ;;
     Darwin*)
         cvlib_platform="macos"
-        cvlib_library_name="libcvlib_core.a"
+        cvlib_library_names=(libcvlib_core.a libcvlib_core.dylib)
         ;;
     *)
         cvlib_platform="linux"
-        cvlib_library_name="libcvlib_core.a"
+        cvlib_library_names=(libcvlib_core.a libcvlib_core.so)
         ;;
 esac
 
 config_lower="$(printf '%s' "$config" | tr '[:upper:]' '[:lower:]')"
-cvlib_library="$script_dir/thirdparty/cvlib/lib/$cvlib_platform/$config_lower/$cvlib_library_name"
-if [[ ! -f "$cvlib_library" ]]; then
+if ! cvlib_is_available; then
     "$script_dir/bundle_cvlib.sh" --config "$config" --platform "$cvlib_platform"
 fi
 

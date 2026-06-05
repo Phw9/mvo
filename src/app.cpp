@@ -1,12 +1,12 @@
-﻿#include "mvo/app.h"
+#include "app.h"
 
-#include "mvo/feature.h"
-#include "mvo/frame_source.h"
-#include "mvo/init.h"
-#include "mvo/loop_closure.h"
-#include "mvo/map_data.h"
-#include "mvo/pose_estimation.h"
-#include "mvo/visualization.h"
+#include "feature.h"
+#include "frame_source.h"
+#include "init.h"
+#include "loop_closure.h"
+#include "map_data.h"
+#include "pose_estimation.h"
+#include "visualization.h"
 
 #include <algorithm>
 #include <cstddef>

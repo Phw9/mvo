@@ -46,7 +46,11 @@ if (Test-Path $IncludeDest) {
     Remove-Item -LiteralPath $IncludeDest -Recurse -Force
 }
 New-Item -ItemType Directory -Force $IncludeDest | Out-Null
-Copy-Item -Path (Join-Path $CvlibSourceDir "include\*") `
+$CvlibIncludeSource = Join-Path $CvlibSourceDir "include\cvlib"
+if (!(Test-Path $CvlibIncludeSource)) {
+    $CvlibIncludeSource = Join-Path $CvlibSourceDir "include"
+}
+Copy-Item -Path (Join-Path $CvlibIncludeSource "*") `
     -Destination $IncludeDest -Recurse -Force
 
 $LibraryNames = @(

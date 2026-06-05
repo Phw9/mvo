@@ -1,4 +1,4 @@
-﻿#include "mvo/config.h"
+#include "config.h"
 
 #include <opencv2/core/persistence.hpp>
 

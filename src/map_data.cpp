@@ -1,13 +1,13 @@
-﻿#include "mvo/map_data.h"
+#include "map_data.h"
 
-#include "mvo/bundle_adjustment.h"
-#include "mvo/config.h"
-#include "mvo/converter.h"
-#include "mvo/feature.h"
-#include "mvo/init.h"
-#include "mvo/visualization.h"
+#include "bundle_adjustment.h"
+#include "config.h"
+#include "converter.h"
+#include "feature.h"
+#include "init.h"
+#include "visualization.h"
 
-#include "cvlib/calib3d/multiview.h"
+#include <calib3d/multiview.h>
 
 #include <iostream>
 #include <string>

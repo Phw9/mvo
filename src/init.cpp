@@ -1,11 +1,11 @@
-﻿#include "mvo/init.h"
+#include "init.h"
 
-#include "mvo/bundle_adjustment.h"
-#include "mvo/config.h"
-#include "mvo/converter.h"
-#include "mvo/visualization.h"
+#include "bundle_adjustment.h"
+#include "config.h"
+#include "converter.h"
+#include "visualization.h"
 
-#include "cvlib/calib3d/multiview.h"
+#include <calib3d/multiview.h>
 
 #include <iostream>
 

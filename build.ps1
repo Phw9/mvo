@@ -97,6 +97,23 @@ function Test-RerunAvailable {
     return $null -ne (Get-Command rerun -ErrorAction SilentlyContinue)
 }
 
+function Test-CvlibAvailable {
+    param(
+        [string]$Platform,
+        [string]$ConfigName,
+        [string[]]$LibraryNames
+    )
+
+    $LibDir = Join-Path $ScriptDir "thirdparty\cvlib\lib\$Platform\$($ConfigName.ToLowerInvariant())"
+    foreach ($LibraryName in $LibraryNames) {
+        if (Test-Path (Join-Path $LibDir $LibraryName)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Add-PathDir {
     param([string]$PathDir)
 
@@ -199,19 +216,20 @@ if (!(Test-RerunAvailable)) {
 }
 
 $CvlibPlatform = "linux"
-$CvlibLibraryName = "libcvlib_core.a"
+$CvlibLibraryNames = @("libcvlib_core.a", "libcvlib_core.so")
 if ($env:OS -eq "Windows_NT") {
     $CvlibPlatform = "msvc"
-    $CvlibLibraryName = "cvlib_core.lib"
+    $CvlibLibraryNames = @("cvlib_core.lib")
 } elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
         [System.Runtime.InteropServices.OSPlatform]::OSX)) {
     $CvlibPlatform = "macos"
+    $CvlibLibraryNames = @("libcvlib_core.a", "libcvlib_core.dylib")
 }
 
-$ConfigLower = $Config.ToLowerInvariant()
-$CvlibLibrary = Join-Path $ScriptDir `
-    "thirdparty\cvlib\lib\$CvlibPlatform\$ConfigLower\$CvlibLibraryName"
-if (!(Test-Path $CvlibLibrary)) {
+if (!(Test-CvlibAvailable `
+        -Platform $CvlibPlatform `
+        -ConfigName $Config `
+        -LibraryNames $CvlibLibraryNames)) {
     & (Join-Path $ScriptDir "bundle_cvlib.ps1") `
         -Config $Config `
         -Platform $CvlibPlatform

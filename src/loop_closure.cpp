@@ -1,6 +1,6 @@
-﻿#include "mvo/loop_closure.h"
+#include "loop_closure.h"
 
-#include "mvo/converter.h"
+#include "converter.h"
 
 #include <opencv2/features2d.hpp>
 

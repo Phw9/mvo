@@ -13,7 +13,7 @@ headers and libraries under `thirdparty/cvlib`.
 - Keep README compact: project summary, build/run commands, and file structure.
 - Keep runtime tunables in JSON under `configs/parameters`.
 - Keep source and header filenames lowercase.
-- Keep headers split by function under `include/mvo`.
+- Keep headers split by function under `include`.
 - Keep `cvlib` consumed through bundled headers and library files.
 - Do not reintroduce `g2o`; bundle adjustment should use `cvlib`.
 - Rerun visualization is enabled by default through the run scripts.

@@ -2,7 +2,7 @@
 
 ## Architecture
 
-- Keep public headers in `include/mvo` and implementation files in `src`.
+- Keep public headers in `include` and implementation files in `src`.
 - Keep filenames lowercase.
 - Keep module boundaries aligned with the current files:
   `feature`, `init`, `pose_estimation`, `map_data`, `bundle_adjustment`,

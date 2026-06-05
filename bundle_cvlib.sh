@@ -63,7 +63,11 @@ bundle_root="$script_dir/thirdparty/cvlib"
 include_dest="$bundle_root/include"
 rm -rf "$include_dest"
 mkdir -p "$include_dest"
-cp -R "$cvlib_source_dir/include/." "$include_dest/"
+cvlib_include_source="$cvlib_source_dir/include/cvlib"
+if [[ ! -d "$cvlib_include_source" ]]; then
+    cvlib_include_source="$cvlib_source_dir/include"
+fi
+cp -R "$cvlib_include_source/." "$include_dest/"
 
 library="$(
     find "$build_dir" -type f \( \

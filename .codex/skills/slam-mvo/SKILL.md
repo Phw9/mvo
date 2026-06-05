@@ -8,7 +8,7 @@ adjustment, loop closure, OpenCV, `cvlib`, or Rerun visualization.
 
 1. Read `configs/kitti_image_sequence.json` and the relevant file under
    `configs/parameters`.
-2. Inspect the owning headers and sources under `include/mvo` and `src`.
+2. Inspect the owning headers and sources under `include` and `src`.
 3. Identify whether the issue is calibration, tracking, matching, two-view
    initialization, PnP, triangulation, map management, BA, or visualization.
 4. Keep any new threshold configurable in the matching JSON parameter file.
