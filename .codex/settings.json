@@ -1,0 +1,28 @@
+{
+  "project": "MVO",
+  "default_agent": ".codex/agents/slam-engineer.md",
+  "primary_skill": ".codex/skills/slam-mvo/SKILL.md",
+  "rules": [
+    ".codex/rules/slam.md"
+  ],
+  "build": {
+    "default_config": "Release",
+    "allowed_configs": [
+      "Release",
+      "Debug"
+    ],
+    "windows": ".\\build.ps1",
+    "linux": "./build.sh"
+  },
+  "run": {
+    "windows": ".\\run.ps1 -Config Release",
+    "linux": "./run.sh --config Release",
+    "rerun_default": true,
+    "parameter_dir": "configs/parameters"
+  },
+  "validation": {
+    "windows_short": ".\\run.ps1 -Config Release -MaxFrames 3 -NoBa -NoRerun -ParameterDir .\\configs\\parameters",
+    "linux_short": "./run.sh --config Release --max-frames 3 --no-ba --no-rerun --parameter-dir ./configs/parameters"
+  }
+}
+
