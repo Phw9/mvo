@@ -1,3 +1,0 @@
-/root/MVO/thirdparty/g2o/build/CMakeFiles/g2o.dir
-/root/MVO/thirdparty/g2o/build/CMakeFiles/edit_cache.dir
-/root/MVO/thirdparty/g2o/build/CMakeFiles/rebuild_cache.dir

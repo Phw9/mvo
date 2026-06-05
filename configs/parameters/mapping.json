@@ -1,0 +1,10 @@
+{
+  "mapping": {
+    "min_tracked_map_points": 110,
+    "target_tracked_map_points": 200,
+    "max_refresh_candidates": 700,
+    "min_refresh_map_points": 100,
+    "min_refresh_parallax_deg": 0.2,
+    "max_triangulation_p90": 3.0
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "initializer": {
+    "min_tracks": 24,
+    "min_map_points": 6,
+    "ransac_max_iters": 1000,
+    "fundamental_inlier_threshold": 0.1,
+    "homography_inlier_threshold": 5.0,
+    "homography_model_ratio": 0.45,
+    "min_parallax_deg": 0.3,
+    "max_triangulation_p90": 3.0
+  }
+}

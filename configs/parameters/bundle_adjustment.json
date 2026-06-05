@@ -1,0 +1,11 @@
+{
+  "bundle_adjustment": {
+    "max_points": 120,
+    "min_points": 12,
+    "max_iterations": 20,
+    "loss_scale": 3.0,
+    "min_baseline": 0.000001,
+    "max_cost_growth": 1.05,
+    "max_reprojection_p90": 3.0
+  }
+}

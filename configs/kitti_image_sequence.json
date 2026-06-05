@@ -1,0 +1,19 @@
+{
+  "input": {
+    "type": "image_sequence",
+    "path": "image/image_0",
+    "parameters": {
+      "directory": "configs/parameters"
+    },
+    "calib": "image/calib.txt",
+    "vocabulary": "image/KITTI_00_phphww_voc.yml.gz",
+    "max_frames": 2000,
+    "run_ba": true,
+    "no_gui": true,
+    "debug_geometry": false,
+    "rerun": {
+      "spawn": true,
+      "save": ""
+    }
+  }
+}

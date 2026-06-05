@@ -1,0 +1,8 @@
+{
+  "pnp": {
+    "min_tracks": 6,
+    "min_stable_inliers": 20,
+    "reprojection_inlier_threshold": 5.0,
+    "max_reprojection_p90": 5.0
+  }
+}

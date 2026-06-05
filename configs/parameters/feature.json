@@ -1,0 +1,21 @@
+{
+  "feature": {
+    "min_init_tracks": 24,
+    "max_features": 800,
+    "max_init_tracks": 120,
+    "refresh_grid_rows": 4,
+    "refresh_grid_cols": 6,
+    "klt_init_window_size": 21,
+    "klt_init_pyramid_levels": 3,
+    "klt_window_size": 31,
+    "klt_pyramid_levels": 4,
+    "klt_max_iterations": 30,
+    "klt_quality": 0.01,
+    "klt_min_distance": 12.0,
+    "klt_epsilon": 0.01,
+    "klt_min_eig_threshold": 0.0001,
+    "max_forward_backward_error": 1.0,
+    "forward_backward_motion_ratio": 0.05,
+    "max_adaptive_forward_backward_error": 2.0
+  }
+}
