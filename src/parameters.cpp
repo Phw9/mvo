@@ -37,6 +37,15 @@ void read_float_parameter(const cv::FileNode& node,
     }
 }
 
+void read_string_parameter(const cv::FileNode& node,
+                           const std::string& key,
+                           std::string* value) {
+    const cv::FileNode child = node[key];
+    if (!child.empty()) {
+        *value = static_cast<std::string>(child);
+    }
+}
+
 cv::FileNode module_node(cv::FileStorage* fs, const std::string& module_name) {
     cv::FileNode node = fs->root();
     const cv::FileNode child = node[module_name];
@@ -53,6 +62,8 @@ bool load_feature_parameters(const std::filesystem::path& path,
                                           cv::FileStorage::FORMAT_JSON);
     if (fs.isOpened()) {
         const cv::FileNode node = module_node(&fs, "feature");
+        read_int_parameter(node, "frontend_mode",
+                           &parameters->frontend_mode);
         read_int_parameter(node, "min_init_tracks",
                            &parameters->min_init_tracks);
         read_int_parameter(node, "max_features", &parameters->max_features);
@@ -87,6 +98,33 @@ bool load_feature_parameters(const std::filesystem::path& path,
         read_double_parameter(
             node, "max_adaptive_forward_backward_error",
             &parameters->max_adaptive_forward_backward_error);
+        read_int_parameter(node, "orb_features",
+                           &parameters->orb_features);
+        read_double_parameter(node, "orb_scale_factor",
+                              &parameters->orb_scale_factor);
+        read_int_parameter(node, "orb_levels", &parameters->orb_levels);
+        read_int_parameter(node, "orb_edge_threshold",
+                           &parameters->orb_edge_threshold);
+        read_int_parameter(node, "orb_patch_size",
+                           &parameters->orb_patch_size);
+        read_int_parameter(node, "orb_fast_threshold",
+                           &parameters->orb_fast_threshold);
+        read_double_parameter(node, "orb_min_distance",
+                              &parameters->orb_min_distance);
+        read_double_parameter(node, "orb_match_ratio",
+                              &parameters->orb_match_ratio);
+        read_double_parameter(node, "orb_max_match_distance",
+                              &parameters->orb_max_match_distance);
+        read_double_parameter(node, "orb_ransac_threshold",
+                              &parameters->orb_ransac_threshold);
+        read_double_parameter(node, "orb_projection_radius",
+                              &parameters->orb_projection_radius);
+        read_double_parameter(node, "orb_projection_fallback_radius",
+                              &parameters->orb_projection_fallback_radius);
+        read_string_parameter(node, "superpoint_model",
+                              &parameters->superpoint_model);
+        read_string_parameter(node, "superglue_model",
+                              &parameters->superglue_model);
         ok = true;
     }
     return ok;
@@ -102,6 +140,12 @@ bool load_pnp_parameters(const std::filesystem::path& path,
         read_int_parameter(node, "min_tracks", &parameters->min_tracks);
         read_int_parameter(node, "min_stable_inliers",
                            &parameters->min_stable_inliers);
+        read_int_parameter(node, "orb_min_stable_inliers",
+                           &parameters->orb_min_stable_inliers);
+        read_int_parameter(node, "ransac_iterations",
+                           &parameters->ransac_iterations);
+        read_int_parameter(node, "ransac_sample_size",
+                           &parameters->ransac_sample_size);
         read_double_parameter(node, "reprojection_inlier_threshold",
                               &parameters->reprojection_inlier_threshold);
         read_double_parameter(node, "max_reprojection_p90",
@@ -133,6 +177,10 @@ bool load_initializer_parameters(const std::filesystem::path& path,
                               &parameters->min_parallax_deg);
         read_double_parameter(node, "max_triangulation_p90",
                               &parameters->max_triangulation_p90);
+        read_double_parameter(node, "orb_min_parallax_deg",
+                              &parameters->orb_min_parallax_deg);
+        read_double_parameter(node, "orb_max_triangulation_p90",
+                              &parameters->orb_max_triangulation_p90);
         ok = true;
     }
     return ok;
@@ -153,10 +201,34 @@ bool load_mapping_parameters(const std::filesystem::path& path,
                            &parameters->max_refresh_candidates);
         read_int_parameter(node, "min_refresh_map_points",
                            &parameters->min_refresh_map_points);
+        read_int_parameter(node, "orb_min_refresh_map_points",
+                           &parameters->orb_min_refresh_map_points);
+        read_int_parameter(node, "aggressive_target_tracked_map_points",
+                           &parameters->aggressive_target_tracked_map_points);
+        read_int_parameter(node, "aggressive_max_refresh_candidates",
+                           &parameters->aggressive_max_refresh_candidates);
+        read_int_parameter(node, "aggressive_min_refresh_map_points",
+                           &parameters->aggressive_min_refresh_map_points);
+        read_int_parameter(node, "max_active_age",
+                           &parameters->max_active_age);
+        read_int_parameter(node, "max_unseen_frames",
+                           &parameters->max_unseen_frames);
+        read_int_parameter(node, "min_pnp_track_length",
+                           &parameters->min_pnp_track_length);
+        read_int_parameter(node, "candidate_min_track_length",
+                           &parameters->candidate_min_track_length);
+        read_double_parameter(node, "max_point_reprojection_error",
+                              &parameters->max_point_reprojection_error);
         read_double_parameter(node, "min_refresh_parallax_deg",
                               &parameters->min_refresh_parallax_deg);
         read_double_parameter(node, "max_triangulation_p90",
                               &parameters->max_triangulation_p90);
+        read_double_parameter(node, "orb_max_triangulation_p90",
+                              &parameters->orb_max_triangulation_p90);
+        read_double_parameter(node, "aggressive_translation",
+                              &parameters->aggressive_translation);
+        read_double_parameter(node, "aggressive_rotation_deg",
+                              &parameters->aggressive_rotation_deg);
         ok = true;
     }
     return ok;
@@ -222,6 +294,10 @@ bool load_visualization_parameters(const std::filesystem::path& path,
 }
 
 void sanitize_parameters(MvoParameters* parameters) {
+    if (parameters->feature.frontend_mode < 0 ||
+        parameters->feature.frontend_mode > 2) {
+        parameters->feature.frontend_mode = 0;
+    }
     parameters->feature.min_init_tracks =
         std::max(2, parameters->feature.min_init_tracks);
     parameters->feature.max_features =
@@ -237,14 +313,51 @@ void sanitize_parameters(MvoParameters* parameters) {
         std::max(3, parameters->feature.klt_init_window_size);
     parameters->feature.klt_window_size =
         std::max(3, parameters->feature.klt_window_size);
+    parameters->feature.orb_features =
+        std::max(1, parameters->feature.orb_features);
+    parameters->feature.orb_scale_factor =
+        std::max(1.01, parameters->feature.orb_scale_factor);
+    parameters->feature.orb_levels =
+        std::max(1, parameters->feature.orb_levels);
+    parameters->feature.orb_edge_threshold =
+        std::max(0, parameters->feature.orb_edge_threshold);
+    parameters->feature.orb_patch_size =
+        std::max(2, parameters->feature.orb_patch_size);
+    parameters->feature.orb_fast_threshold =
+        std::max(0, parameters->feature.orb_fast_threshold);
+    parameters->feature.orb_min_distance =
+        std::max(1.0, parameters->feature.orb_min_distance);
+    parameters->feature.orb_match_ratio =
+        std::clamp(parameters->feature.orb_match_ratio, 0.1, 1.0);
+    parameters->feature.orb_max_match_distance =
+        std::max(1.0, parameters->feature.orb_max_match_distance);
+    parameters->feature.orb_ransac_threshold =
+        std::max(0.1, parameters->feature.orb_ransac_threshold);
+    parameters->feature.orb_projection_radius =
+        std::max(1.0, parameters->feature.orb_projection_radius);
+    parameters->feature.orb_projection_fallback_radius =
+        std::max(parameters->feature.orb_projection_radius,
+                 parameters->feature.orb_projection_fallback_radius);
     parameters->pnp.min_tracks = std::max(4, parameters->pnp.min_tracks);
     parameters->pnp.min_stable_inliers =
         std::max(parameters->pnp.min_tracks,
                  parameters->pnp.min_stable_inliers);
+    parameters->pnp.orb_min_stable_inliers =
+        std::max(parameters->pnp.min_tracks,
+                 parameters->pnp.orb_min_stable_inliers);
+    parameters->pnp.ransac_iterations =
+        std::max(0, parameters->pnp.ransac_iterations);
+    parameters->pnp.ransac_sample_size =
+        std::max(parameters->pnp.min_tracks,
+                 parameters->pnp.ransac_sample_size);
     parameters->initializer.min_tracks =
         std::max(8, parameters->initializer.min_tracks);
     parameters->initializer.min_map_points =
         std::max(4, parameters->initializer.min_map_points);
+    parameters->initializer.orb_min_parallax_deg =
+        std::max(0.0, parameters->initializer.orb_min_parallax_deg);
+    parameters->initializer.orb_max_triangulation_p90 =
+        std::max(0.1, parameters->initializer.orb_max_triangulation_p90);
     parameters->mapping.min_tracked_map_points =
         std::max(1, parameters->mapping.min_tracked_map_points);
     parameters->mapping.target_tracked_map_points =
@@ -252,6 +365,35 @@ void sanitize_parameters(MvoParameters* parameters) {
                  parameters->mapping.target_tracked_map_points);
     parameters->mapping.min_refresh_map_points =
         std::max(1, parameters->mapping.min_refresh_map_points);
+    parameters->mapping.orb_min_refresh_map_points =
+        std::max(1, parameters->mapping.orb_min_refresh_map_points);
+    parameters->mapping.aggressive_target_tracked_map_points =
+        std::max(parameters->mapping.target_tracked_map_points,
+                 parameters->mapping.aggressive_target_tracked_map_points);
+    parameters->mapping.aggressive_max_refresh_candidates =
+        std::max(parameters->mapping.max_refresh_candidates,
+                 parameters->mapping.aggressive_max_refresh_candidates);
+    parameters->mapping.aggressive_min_refresh_map_points =
+        std::max(1, parameters->mapping.aggressive_min_refresh_map_points);
+    parameters->mapping.max_active_age =
+        std::max(1, parameters->mapping.max_active_age);
+    parameters->mapping.max_unseen_frames =
+        std::max(0, parameters->mapping.max_unseen_frames);
+    parameters->mapping.min_pnp_track_length =
+        std::max(1, parameters->mapping.min_pnp_track_length);
+    parameters->mapping.candidate_min_track_length =
+        std::max(1, parameters->mapping.candidate_min_track_length);
+    parameters->mapping.max_point_reprojection_error =
+        std::max(0.1, parameters->mapping.max_point_reprojection_error);
+    parameters->mapping.max_triangulation_p90 =
+        std::max(0.1, parameters->mapping.max_triangulation_p90);
+    parameters->mapping.orb_max_triangulation_p90 =
+        std::max(parameters->mapping.max_triangulation_p90,
+                 parameters->mapping.orb_max_triangulation_p90);
+    parameters->mapping.aggressive_translation =
+        std::max(0.0, parameters->mapping.aggressive_translation);
+    parameters->mapping.aggressive_rotation_deg =
+        std::max(0.0, parameters->mapping.aggressive_rotation_deg);
     parameters->bundle_adjustment.max_points =
         std::max(1, parameters->bundle_adjustment.max_points);
     parameters->bundle_adjustment.min_points =

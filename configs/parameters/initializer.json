@@ -7,6 +7,8 @@
     "homography_inlier_threshold": 5.0,
     "homography_model_ratio": 0.45,
     "min_parallax_deg": 0.3,
-    "max_triangulation_p90": 3.0
+    "max_triangulation_p90": 3.0,
+    "orb_min_parallax_deg": 0.5,
+    "orb_max_triangulation_p90": 8.0
   }
 }

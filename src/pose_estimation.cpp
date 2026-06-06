@@ -6,7 +6,11 @@
 #include <calib3d/pnp.h>
 #include <optimize/lm.h>
 
+#include <algorithm>
 #include <iostream>
+#include <limits>
+#include <numeric>
+#include <random>
 #include <string>
 
 namespace mvo {
@@ -43,6 +47,136 @@ bool solve_pnp_once(const std::vector<cv::Point3f>& map_points,
     return ok;
 }
 
+void select_indexed_points(const std::vector<cv::Point3f>& map_points,
+                           const std::vector<cv::Point2f>& image_points,
+                           const std::vector<int32_t>& indices,
+                           std::vector<cv::Point3f>* selected_map_points,
+                           std::vector<cv::Point2f>* selected_image_points) {
+    selected_map_points->clear();
+    selected_image_points->clear();
+    selected_map_points->reserve(indices.size());
+    selected_image_points->reserve(indices.size());
+    for (const int32_t index : indices) {
+        selected_map_points->push_back(
+            map_points[static_cast<std::size_t>(index)]);
+        selected_image_points->push_back(
+            image_points[static_cast<std::size_t>(index)]);
+    }
+}
+
+bool run_pnp_ransac(const std::vector<cv::Point3f>& map_points,
+                    const std::vector<cv::Point2f>& image_points,
+                    const CameraIntrinsics& camera,
+                    const Pose& initial_pose,
+                    const PnpParameters& parameters,
+                    bool debug_geometry,
+                    Pose* best_pose,
+                    std::vector<cv::Point3f>* best_map_points,
+                    std::vector<cv::Point2f>* best_image_points,
+                    cvlib::optimize::OptimizeReport* best_report,
+                    cvlib::ErrorCode* best_error_code,
+                    int32_t* best_inlier_count) {
+    const int32_t total = static_cast<int32_t>(map_points.size());
+    const int32_t sample_size =
+        std::min(parameters.ransac_sample_size, total);
+    if (parameters.ransac_iterations <= 0 ||
+        total < parameters.min_tracks ||
+        sample_size < parameters.min_tracks) {
+        return false;
+    }
+
+    std::vector<int32_t> all_indices(static_cast<std::size_t>(total));
+    std::iota(all_indices.begin(), all_indices.end(), 0);
+    std::mt19937 rng(0x4D564F50);
+
+    int32_t best_score = -1;
+    double best_p90 = std::numeric_limits<double>::infinity();
+    Pose candidate_pose = initial_pose;
+    for (int32_t iter = 0; iter < parameters.ransac_iterations; ++iter) {
+        std::shuffle(all_indices.begin(), all_indices.end(), rng);
+        std::vector<int32_t> sample_indices(
+            all_indices.begin(), all_indices.begin() + sample_size);
+        std::vector<cv::Point3f> sample_map_points;
+        std::vector<cv::Point2f> sample_image_points;
+        select_indexed_points(map_points, image_points, sample_indices,
+                              &sample_map_points, &sample_image_points);
+
+        Pose hypothesis = initial_pose;
+        cvlib::optimize::OptimizeReport report = {};
+        cvlib::ErrorCode ec = cvlib::ErrorCode::kUnknownMethod;
+        if (!solve_pnp_once(sample_map_points, sample_image_points, camera,
+                            initial_pose, &hypothesis, &report, &ec)) {
+            continue;
+        }
+
+        std::vector<cv::Point3f> inlier_map_points;
+        std::vector<cv::Point2f> inlier_image_points;
+        filter_by_reprojection(map_points, image_points, hypothesis, camera,
+                               parameters.reprojection_inlier_threshold,
+                               &inlier_map_points, &inlier_image_points);
+        const int32_t inliers =
+            static_cast<int32_t>(inlier_image_points.size());
+        if (inliers < parameters.min_stable_inliers) {
+            continue;
+        }
+        const ReprojectionStats stats = compute_reprojection_stats(
+            inlier_map_points, inlier_image_points, hypothesis, camera);
+        if (inliers > best_score ||
+            (inliers == best_score && stats.p90 < best_p90)) {
+            best_score = inliers;
+            best_p90 = stats.p90;
+            candidate_pose = hypothesis;
+            *best_map_points = inlier_map_points;
+            *best_image_points = inlier_image_points;
+            *best_report = report;
+            *best_error_code = ec;
+        }
+    }
+
+    bool ok = best_score >= parameters.min_stable_inliers;
+    if (ok) {
+        Pose refined_pose = candidate_pose;
+        cvlib::optimize::OptimizeReport refined_report = {};
+        cvlib::ErrorCode refined_ec = cvlib::ErrorCode::kUnknownMethod;
+        const bool refined_ok = solve_pnp_once(
+            *best_map_points, *best_image_points, camera, candidate_pose,
+            &refined_pose, &refined_report, &refined_ec);
+        if (refined_ok) {
+            std::vector<cv::Point3f> refined_map_points;
+            std::vector<cv::Point2f> refined_image_points;
+            filter_by_reprojection(
+                *best_map_points, *best_image_points, refined_pose, camera,
+                parameters.reprojection_inlier_threshold, &refined_map_points,
+                &refined_image_points);
+            if (static_cast<int32_t>(refined_image_points.size()) >=
+                parameters.min_stable_inliers) {
+                *best_pose = refined_pose;
+                *best_map_points = refined_map_points;
+                *best_image_points = refined_image_points;
+                *best_report = refined_report;
+                *best_error_code = refined_ec;
+                *best_inlier_count =
+                    static_cast<int32_t>(refined_image_points.size());
+            } else {
+                *best_pose = candidate_pose;
+                *best_inlier_count = best_score;
+            }
+        } else {
+            *best_pose = candidate_pose;
+            *best_inlier_count = best_score;
+        }
+    }
+    if (debug_geometry) {
+        std::cout << "pnp_ransac input=" << total
+                  << " iterations=" << parameters.ransac_iterations
+                  << " sample_size=" << sample_size
+                  << " best_inliers=" << best_score
+                  << " best_p90=" << best_p90
+                  << " ok=" << ok << std::endl;
+    }
+    return ok;
+}
+
 bool run_pnp(std::vector<cv::Point3f>* map_points,
              std::vector<cv::Point2f>* image_points,
              const CameraIntrinsics& camera,
@@ -56,7 +190,21 @@ bool run_pnp(std::vector<cv::Point3f>* map_points,
     Pose candidate = initial_pose;
     std::string reject_reason;
     int32_t inlier_count = 0;
-    if (static_cast<int32_t>(map_points->size()) >= parameters.min_tracks) {
+    if (static_cast<int32_t>(map_points->size()) >= parameters.min_tracks &&
+        parameters.ransac_iterations > 0) {
+        std::vector<cv::Point3f> ransac_map_points;
+        std::vector<cv::Point2f> ransac_image_points;
+        ok = run_pnp_ransac(
+            *map_points, *image_points, camera, initial_pose, parameters,
+            debug_geometry, &candidate, &ransac_map_points,
+            &ransac_image_points, &report, &ec, &inlier_count);
+        if (ok) {
+            *map_points = ransac_map_points;
+            *image_points = ransac_image_points;
+        }
+    }
+    if (!ok &&
+        static_cast<int32_t>(map_points->size()) >= parameters.min_tracks) {
         ok = solve_pnp_once(*map_points, *image_points, camera, initial_pose,
                             &candidate, &report, &ec);
     }

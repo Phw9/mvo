@@ -27,10 +27,21 @@ struct Pose {
     double t[3];
 };
 
+struct MapPoint {
+    cv::Point3f position;
+    cv::Mat descriptor;
+    int32_t created_frame = 0;
+    int32_t last_seen_frame = 0;
+    int32_t age = 0;
+    int32_t track_length = 1;
+    double last_reprojection_error = 0.0;
+    bool candidate = true;
+};
+
 struct TrackState {
     cv::Mat prev_image;
     std::vector<cv::Point2f> prev_points;
-    std::vector<cv::Point3f> map_points;
+    std::vector<MapPoint> map_points;
     std::vector<cv::Point3f> all_map_points;
     Pose prev_pose;
     Pose last_pose;
@@ -57,6 +68,7 @@ struct ReprojectionStats {
 struct TwoViewSelection {
     std::vector<cv::Point2f> points0;
     std::vector<cv::Point2f> points1;
+    std::vector<int32_t> indices;
     int32_t fundamental_inliers = 0;
     int32_t homography_inliers = 0;
     double homography_ratio = 0.0;

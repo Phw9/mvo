@@ -1,5 +1,7 @@
 {
   "feature": {
+    "_frontend_modes": "0=klt, 1=orb, 2=superpoint_superglue",
+    "frontend_mode": 0,
     "min_init_tracks": 24,
     "max_features": 800,
     "max_init_tracks": 120,
@@ -16,6 +18,20 @@
     "klt_min_eig_threshold": 0.0001,
     "max_forward_backward_error": 1.0,
     "forward_backward_motion_ratio": 0.05,
-    "max_adaptive_forward_backward_error": 2.0
+    "max_adaptive_forward_backward_error": 2.0,
+    "orb_features": 1000,
+    "orb_scale_factor": 1.2,
+    "orb_levels": 8,
+    "orb_edge_threshold": 31,
+    "orb_patch_size": 31,
+    "orb_fast_threshold": 20,
+    "orb_min_distance": 12.0,
+    "orb_match_ratio": 0.8,
+    "orb_max_match_distance": 80.0,
+    "orb_ransac_threshold": 2.0,
+    "orb_projection_radius": 35.0,
+    "orb_projection_fallback_radius": 90.0,
+    "superpoint_model": "",
+    "superglue_model": ""
   }
 }
