@@ -3,8 +3,8 @@
 #ifndef CVLIB_OPTIMIZE_PROBLEM_H_
 #define CVLIB_OPTIMIZE_PROBLEM_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

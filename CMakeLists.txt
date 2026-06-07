@@ -10,11 +10,10 @@ set(MVO_CVLIB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/cvlib" CACHE PATH
 set(MVO_CVLIB_PLATFORM "" CACHE STRING
     "Bundled cvlib platform directory override, e.g. msvc or linux")
 
-find_package(OpenCV REQUIRED COMPONENTS
+find_package(OpenCV QUIET REQUIRED COMPONENTS
     core
     imgcodecs
     imgproc
-    video
     videoio
     features2d
     calib3d

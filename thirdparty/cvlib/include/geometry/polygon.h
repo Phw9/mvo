@@ -3,8 +3,8 @@
 #ifndef CVLIB_GEOMETRY_POLYGON_H_
 #define CVLIB_GEOMETRY_POLYGON_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 namespace cvlib {
 namespace geometry {

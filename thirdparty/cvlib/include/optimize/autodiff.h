@@ -3,9 +3,9 @@
 #ifndef CVLIB_OPTIMIZE_AUTODIFF_H_
 #define CVLIB_OPTIMIZE_AUTODIFF_H_
 
-#include "jet.h"
-#include "../types.h"
-#include "../error_codes.h"
+#include "optimize/jet.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

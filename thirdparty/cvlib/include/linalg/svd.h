@@ -3,9 +3,9 @@
 #ifndef CVLIB_LINALG_SVD_H_
 #define CVLIB_LINALG_SVD_H_
 
-#include "../types.h"
-#include "../defs.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "defs.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

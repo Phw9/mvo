@@ -3,9 +3,9 @@
 #ifndef CVLIB_FILTER_EKF_H_
 #define CVLIB_FILTER_EKF_H_
 
-#include "kalman.h"
-#include "../types.h"
-#include "../error_codes.h"
+#include "filter/kalman.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

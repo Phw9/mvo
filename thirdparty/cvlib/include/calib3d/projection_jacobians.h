@@ -3,8 +3,8 @@
 #ifndef CVLIB_CALIB3D_PROJECTION_JACOBIANS_H_
 #define CVLIB_CALIB3D_PROJECTION_JACOBIANS_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

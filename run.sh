@@ -122,10 +122,25 @@ if [[ -n "${LOCALAPPDATA:-}" ]]; then
 fi
 add_python_user_scripts_to_path
 
-exe="$script_dir/build/$config/mvo_cvlib.exe"
-if [[ ! -x "$exe" ]]; then
-    exe="$script_dir/build/mvo_cvlib"
-fi
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) build_platform="msvc" ;;
+    Darwin*) build_platform="macos" ;;
+    *) build_platform="linux" ;;
+esac
+config_lower="$(printf '%s' "$config" | tr '[:upper:]' '[:lower:]')"
+exe=""
+exe_candidates=(
+    "$script_dir/build/$build_platform/$config_lower/mvo_cvlib"
+    "$script_dir/build/$build_platform/$config_lower/$config/mvo_cvlib.exe"
+    "$script_dir/build/$config/mvo_cvlib.exe"
+    "$script_dir/build/mvo_cvlib"
+)
+for exe_candidate in "${exe_candidates[@]}"; do
+    if [[ -x "$exe_candidate" ]]; then
+        exe="$exe_candidate"
+        break
+    fi
+done
 if [[ ! -x "$exe" ]]; then
     echo "mvo_cvlib executable not found. Run ./build.sh first." >&2
     exit 1

@@ -36,8 +36,15 @@ function Add-PathDir {
 function Add-PythonUserScriptsToPath {
     foreach ($PythonCmd in @("py", "python", "python3")) {
         if (Get-Command $PythonCmd -ErrorAction SilentlyContinue) {
-            $UserBase = & $PythonCmd -c "import site; print(site.USER_BASE)" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $UserBase -ne "") {
+            $PreviousErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                $UserBase = & $PythonCmd -c "import site; print(site.USER_BASE)" 2>$null
+                $PythonExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $PreviousErrorActionPreference
+            }
+            if ($PythonExitCode -eq 0 -and $UserBase -ne "") {
                 Add-PathDir (Join-Path $UserBase "Scripts")
                 Add-PathDir (Join-Path $UserBase "bin")
             }

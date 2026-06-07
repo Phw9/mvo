@@ -1,8 +1,10 @@
 #include "feature.h"
 
 #include "converter.h"
+#include "feature2d/klt.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -773,10 +775,111 @@ bool detect_refresh_points(const cv::Mat& image,
     return ok;
 }
 
+cvlib::feature2d::KltImageView make_cvlib_klt_image_view(
+    const cv::Mat& image,
+    std::vector<cvlib::float64_t>* pixels) {
+    cvlib::feature2d::KltImageView view;
+    pixels->clear();
+    if (!image.empty()) {
+        cv::Mat gray;
+        if (image.channels() == 1) {
+            gray = image;
+        } else {
+            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+        }
+        cv::Mat gray64;
+        gray.convertTo(gray64, CV_64F);
+        pixels->resize(static_cast<std::size_t>(gray64.rows * gray64.cols));
+        for (int32_t row = 0; row < gray64.rows; ++row) {
+            const double* src = gray64.ptr<double>(row);
+            for (int32_t col = 0; col < gray64.cols; ++col) {
+                (*pixels)[static_cast<std::size_t>(
+                    row * gray64.cols + col)] = src[col];
+            }
+        }
+        view.data = pixels->data();
+        view.rows = gray64.rows;
+        view.cols = gray64.cols;
+        view.stride = gray64.cols;
+    }
+    return view;
+}
+
+cvlib::feature2d::KltParameters make_cvlib_klt_parameters(
+    const FeatureParameters& parameters,
+    int32_t window_size,
+    int32_t pyramid_levels) {
+    cvlib::feature2d::KltParameters klt_parameters =
+        cvlib::feature2d::klt_default_parameters();
+    klt_parameters.window_width = window_size;
+    klt_parameters.window_height = window_size;
+    klt_parameters.max_level = pyramid_levels;
+    klt_parameters.max_iterations = parameters.klt_max_iterations;
+    klt_parameters.epsilon = parameters.klt_epsilon;
+    klt_parameters.min_eig_threshold = parameters.klt_min_eig_threshold;
+    return klt_parameters;
+}
+
+cvlib::ErrorCode track_points_with_cvlib_klt(
+    const cv::Mat& prev_image,
+    const cv::Mat& image,
+    const std::vector<cv::Point2f>& prev_points,
+    const FeatureParameters& parameters,
+    int32_t window_size,
+    int32_t pyramid_levels,
+    std::vector<cv::Point2f>* next_points,
+    std::vector<uint8_t>* status) {
+    cvlib::ErrorCode ec = cvlib::ErrorCode::kSuccess;
+    next_points->clear();
+    status->clear();
+    if (!prev_points.empty()) {
+        std::vector<cvlib::float64_t> prev_pixels;
+        std::vector<cvlib::float64_t> image_pixels;
+        const cvlib::feature2d::KltImageView prev_view =
+            make_cvlib_klt_image_view(prev_image, &prev_pixels);
+        const cvlib::feature2d::KltImageView image_view =
+            make_cvlib_klt_image_view(image, &image_pixels);
+        std::vector<cvlib::feature2d::KltPoint> input_points(
+            prev_points.size());
+        std::vector<cvlib::feature2d::KltPoint> output_points(
+            prev_points.size());
+        std::vector<cvlib::float64_t> errors(prev_points.size());
+        status->resize(prev_points.size(), 0U);
+        for (int32_t i = 0; i < static_cast<int32_t>(prev_points.size());
+             ++i) {
+            input_points[static_cast<std::size_t>(i)].x =
+                static_cast<double>(prev_points[static_cast<std::size_t>(i)].x);
+            input_points[static_cast<std::size_t>(i)].y =
+                static_cast<double>(prev_points[static_cast<std::size_t>(i)].y);
+        }
+        const cvlib::feature2d::KltParameters klt_parameters =
+            make_cvlib_klt_parameters(parameters, window_size,
+                                      pyramid_levels);
+        ec = cvlib::feature2d::klt_track(
+            &prev_view, &image_view, input_points.data(),
+            static_cast<int32_t>(input_points.size()), &klt_parameters,
+            output_points.data(), status->data(), errors.data());
+        if (ec == cvlib::ErrorCode::kSuccess) {
+            next_points->resize(output_points.size());
+            for (int32_t i = 0;
+                 i < static_cast<int32_t>(output_points.size()); ++i) {
+                (*next_points)[static_cast<std::size_t>(i)] = cv::Point2f(
+                    static_cast<float>(
+                        output_points[static_cast<std::size_t>(i)].x),
+                    static_cast<float>(
+                        output_points[static_cast<std::size_t>(i)].y));
+            }
+        } else {
+            status->clear();
+        }
+    }
+    return ec;
+}
+
 double adaptive_forward_backward_threshold(
     const std::vector<cv::Point2f>& prev_points,
     const std::vector<cv::Point2f>& next_points,
-    const std::vector<uchar>& status,
+    const std::vector<uint8_t>& status,
     const FeatureParameters& parameters,
     const cv::Size& image_size) {
     double threshold = parameters.max_forward_backward_error;
@@ -816,6 +919,7 @@ struct KltPassResult {
     std::vector<cv::Point2f> tracked_next;
     std::vector<int32_t> tracked_indices;
     int32_t raw_kept = 0;
+    int32_t cvlib_error = 0;
     double fb_threshold = 1.0;
     int32_t window_size = 21;
     int32_t pyramid_levels = 3;
@@ -834,54 +938,64 @@ void run_klt_pass(const cv::Mat& prev_image,
     result->tracked_next.clear();
     result->tracked_indices.clear();
     result->raw_kept = 0;
+    result->cvlib_error = 0;
     result->fb_threshold = parameters.max_forward_backward_error;
     result->window_size = window_size;
     result->pyramid_levels = pyramid_levels;
     result->used_wide_search = adaptive_fb;
 
-    std::vector<uchar> status;
-    std::vector<uchar> backward_status;
-    std::vector<float> err;
-    std::vector<float> backward_err;
+    std::vector<uint8_t> status;
+    std::vector<uint8_t> backward_status;
     std::vector<cv::Point2f> next_points;
     std::vector<cv::Point2f> backward_points;
     if (!prev_points.empty()) {
-        const cv::Size lk_window(window_size, window_size);
-        const cv::TermCriteria lk_criteria(
-            cv::TermCriteria::COUNT + cv::TermCriteria::EPS,
-            parameters.klt_max_iterations, parameters.klt_epsilon);
-        cv::calcOpticalFlowPyrLK(prev_image, image, prev_points, next_points,
-                                 status, err, lk_window, pyramid_levels,
-                                 lk_criteria, 0,
-                                 parameters.klt_min_eig_threshold);
-        cv::calcOpticalFlowPyrLK(image, prev_image, next_points,
-                                 backward_points, backward_status,
-                                 backward_err, lk_window, pyramid_levels,
-                                 lk_criteria, 0,
-                                 parameters.klt_min_eig_threshold);
-        if (adaptive_fb) {
-            result->fb_threshold = adaptive_forward_backward_threshold(
-                prev_points, next_points, status, parameters, image.size());
+        cvlib::ErrorCode ec = track_points_with_cvlib_klt(
+            prev_image, image, prev_points, parameters, window_size,
+            pyramid_levels, &next_points, &status);
+        if (ec == cvlib::ErrorCode::kSuccess) {
+            ec = track_points_with_cvlib_klt(
+                image, prev_image, next_points, parameters, window_size,
+                pyramid_levels, &backward_points, &backward_status);
         }
-        for (int32_t i = 0; i < static_cast<int32_t>(status.size()); ++i) {
-            if (status[i] != 0) {
-                ++result->raw_kept;
+        result->cvlib_error = static_cast<int32_t>(ec);
+        if (ec == cvlib::ErrorCode::kSuccess) {
+            if (adaptive_fb) {
+                result->fb_threshold = adaptive_forward_backward_threshold(
+                    prev_points, next_points, status, parameters,
+                    image.size());
             }
-            const bool in_bounds =
-                next_points[i].x >= 0.0F &&
-                next_points[i].x < static_cast<float>(image.cols) &&
-                next_points[i].y >= 0.0F &&
-                next_points[i].y < static_cast<float>(image.rows);
-            const double dx = static_cast<double>(
-                backward_points[i].x - prev_points[i].x);
-            const double dy = static_cast<double>(
-                backward_points[i].y - prev_points[i].y);
-            const double fb_error = std::sqrt(dx * dx + dy * dy);
-            if (status[i] != 0 && backward_status[i] != 0 && in_bounds &&
-                fb_error <= result->fb_threshold) {
-                result->tracked_prev.push_back(prev_points[i]);
-                result->tracked_next.push_back(next_points[i]);
-                result->tracked_indices.push_back(i);
+            const int32_t track_count = std::min(
+                std::min(static_cast<int32_t>(status.size()),
+                         static_cast<int32_t>(backward_status.size())),
+                std::min(static_cast<int32_t>(next_points.size()),
+                         static_cast<int32_t>(backward_points.size())));
+            for (int32_t i = 0; i < track_count; ++i) {
+                if (status[static_cast<std::size_t>(i)] != 0U) {
+                    ++result->raw_kept;
+                }
+                const bool in_bounds =
+                    next_points[static_cast<std::size_t>(i)].x >= 0.0F &&
+                    next_points[static_cast<std::size_t>(i)].x <
+                        static_cast<float>(image.cols) &&
+                    next_points[static_cast<std::size_t>(i)].y >= 0.0F &&
+                    next_points[static_cast<std::size_t>(i)].y <
+                        static_cast<float>(image.rows);
+                const double dx = static_cast<double>(
+                    backward_points[static_cast<std::size_t>(i)].x -
+                    prev_points[static_cast<std::size_t>(i)].x);
+                const double dy = static_cast<double>(
+                    backward_points[static_cast<std::size_t>(i)].y -
+                    prev_points[static_cast<std::size_t>(i)].y);
+                const double fb_error = std::sqrt(dx * dx + dy * dy);
+                if (status[static_cast<std::size_t>(i)] != 0U &&
+                    backward_status[static_cast<std::size_t>(i)] != 0U &&
+                    in_bounds && fb_error <= result->fb_threshold) {
+                    result->tracked_prev.push_back(
+                        prev_points[static_cast<std::size_t>(i)]);
+                    result->tracked_next.push_back(
+                        next_points[static_cast<std::size_t>(i)]);
+                    result->tracked_indices.push_back(i);
+                }
             }
         }
         if (static_cast<int32_t>(result->tracked_next.size()) >
@@ -983,6 +1097,7 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
                   << " input=" << prev_points.size()
                   << " status=" << result.raw_kept
                   << " fb_kept=" << tracked_next->size()
+                  << " cvlib_error=" << result.cvlib_error
                   << " fb_thresh=" << result.fb_threshold
                   << " lk_window=" << result.window_size
                   << " lk_levels=" << result.pyramid_levels

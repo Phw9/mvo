@@ -3,8 +3,8 @@
 #ifndef CVLIB_FILTER_AVERAGE_FILTER_H_
 #define CVLIB_FILTER_AVERAGE_FILTER_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 
@@ -25,9 +25,9 @@ ErrorCode average_filter(const Matrix* signal, int32_t window_size,
                          Matrix* result);
 
 /*
-Applies a weighted moving average; uniform weights if weights is null.
+Applies a trailing moving average per 1D signal row.
 
-@param signal Input matrix.
+@param signal Input signal; 2D input is filtered independently per row.
 @param window_size Window length; must match weights->size when weights is non-null.
 @param result Output matrix; must be pre-allocated.
 @param weights Optional nonnegative weights; null selects uniform weights.

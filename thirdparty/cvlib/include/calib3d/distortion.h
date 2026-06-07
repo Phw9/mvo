@@ -3,8 +3,8 @@
 #ifndef CVLIB_CALIB3D_DISTORTION_H_
 #define CVLIB_CALIB3D_DISTORTION_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 namespace cvlib {
 namespace calib3d {

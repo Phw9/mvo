@@ -3,8 +3,8 @@
 #ifndef CVLIB_LINALG_DECOMPOSITION_H_
 #define CVLIB_LINALG_DECOMPOSITION_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

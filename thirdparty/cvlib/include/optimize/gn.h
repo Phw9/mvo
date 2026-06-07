@@ -3,10 +3,10 @@
 #ifndef CVLIB_OPTIMIZE_GN_H_
 #define CVLIB_OPTIMIZE_GN_H_
 
-#include "../types.h"
-#include "../error_codes.h"
-#include "problem.h"
-#include "lm.h"
+#include "types.h"
+#include "error_codes.h"
+#include "optimize/problem.h"
+#include "optimize/lm.h"
 
 #include <cstdint>
 

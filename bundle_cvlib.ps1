@@ -18,7 +18,18 @@ if (!(Test-Path (Join-Path $CvlibSourceDir "CMakeLists.txt"))) {
     exit 1
 }
 
-$BuildDir = Join-Path $ScriptDir "build\cvlib_package"
+if ($Platform -eq "") {
+    $Platform = "linux"
+    if ($env:OS -eq "Windows_NT") {
+        $Platform = "msvc"
+    } elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+            [System.Runtime.InteropServices.OSPlatform]::OSX)) {
+        $Platform = "macos"
+    }
+}
+
+$ConfigLower = $Config.ToLowerInvariant()
+$BuildDir = Join-Path $ScriptDir "build\cvlib_package\$Platform\$ConfigLower"
 $ConfigureArgs = @(
     "-S", $CvlibSourceDir,
     "-B", $BuildDir,
@@ -26,6 +37,14 @@ $ConfigureArgs = @(
     "-DCVLIB_BUILD_TESTS=OFF",
     "-DCVLIB_BUILD_PYTHON=OFF"
 )
+if ($Platform -match "^(linux|unix)$") {
+    $LinuxCxxFlags = $env:CXXFLAGS
+    if ($null -eq $LinuxCxxFlags) {
+        $LinuxCxxFlags = ""
+    }
+    $LinuxCxxFlags = "$LinuxCxxFlags -Wno-unused-function".Trim()
+    $ConfigureArgs += "-DCMAKE_CXX_FLAGS=$LinuxCxxFlags"
+}
 if ($Generator -ne "") {
     $ConfigureArgs = @("-G", $Generator) + $ConfigureArgs
 }
@@ -52,37 +71,52 @@ if (!(Test-Path $CvlibIncludeSource)) {
 }
 Copy-Item -Path (Join-Path $CvlibIncludeSource "*") `
     -Destination $IncludeDest -Recurse -Force
+$Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+Get-ChildItem -Path $IncludeDest -Recurse -Filter "*.h" | ForEach-Object {
+    $HeaderText = [System.IO.File]::ReadAllText($_.FullName)
+    $HeaderText = $HeaderText.Replace('#include "cvlib/', '#include "')
+    [System.IO.File]::WriteAllText($_.FullName, $HeaderText, $Utf8NoBom)
+}
 
-$LibraryNames = @(
-    "cvlib_core.lib",
-    "libcvlib_core.a",
-    "libcvlib_core.so",
-    "libcvlib_core.dylib"
-)
-$Library = Get-ChildItem -Recurse -File $BuildDir |
+$LibraryNames = @()
+if ($Platform -match "^(msvc|windows)$") {
+    $LibraryNames = @("cvlib_core.lib")
+} elseif ($Platform -match "^(linux|unix)$") {
+    $LibraryNames = @("libcvlib_core.a", "libcvlib_core.so")
+} elseif ($Platform -match "^(macos|darwin)$") {
+    $LibraryNames = @("libcvlib_core.a", "libcvlib_core.dylib")
+} else {
+    $LibraryNames = @(
+        "cvlib_core.lib",
+        "libcvlib_core.a",
+        "libcvlib_core.so",
+        "libcvlib_core.dylib"
+    )
+}
+
+$Libraries = @(Get-ChildItem -Recurse -File $BuildDir |
     Where-Object { $LibraryNames -contains $_.Name } |
     Sort-Object FullName |
-    Select-Object -First 1
-if ($null -eq $Library) {
-    Write-Error "cvlib library was not produced under $BuildDir"
+    Select-Object)
+if ($Libraries.Count -eq 0) {
+    Write-Error "cvlib library for platform '$Platform' was not produced under $BuildDir"
     exit 1
 }
 
-if ($Platform -eq "") {
-    $Platform = "linux"
-    if ($env:OS -eq "Windows_NT") {
-        $Platform = "msvc"
-    } elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
-            [System.Runtime.InteropServices.OSPlatform]::OSX)) {
-        $Platform = "macos"
-    }
-}
-
-$ConfigLower = $Config.ToLowerInvariant()
 $LibDest = Join-Path $BundleRoot "lib\$Platform\$ConfigLower"
 New-Item -ItemType Directory -Force $LibDest | Out-Null
-Copy-Item -LiteralPath $Library.FullName -Destination $LibDest -Force
+foreach ($LibraryName in $LibraryNames) {
+    $ExistingLibrary = Join-Path $LibDest $LibraryName
+    if (Test-Path $ExistingLibrary) {
+        Remove-Item -LiteralPath $ExistingLibrary -Force
+    }
+}
+foreach ($Library in $Libraries) {
+    Copy-Item -LiteralPath $Library.FullName -Destination $LibDest -Force
+}
 
 Write-Host "cvlib bundled:"
 Write-Host "  headers: $IncludeDest"
-Write-Host "  library: $(Join-Path $LibDest $Library.Name)"
+foreach ($Library in $Libraries) {
+    Write-Host "  library: $(Join-Path $LibDest $Library.Name)"
+}

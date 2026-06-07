@@ -8,8 +8,8 @@
 #ifndef CVLIB_FILTER_STATES_H_
 #define CVLIB_FILTER_STATES_H_
 
-#include "../types.h"
-#include "../error_codes.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 

@@ -3,9 +3,9 @@
 #ifndef CVLIB_OPTIMIZE_NUMERICAL_DIFF_H_
 #define CVLIB_OPTIMIZE_NUMERICAL_DIFF_H_
 
-#include "../types.h"
-#include "../error_codes.h"
-#include "problem.h"
+#include "types.h"
+#include "error_codes.h"
+#include "optimize/problem.h"
 
 #include <cstdint>
 

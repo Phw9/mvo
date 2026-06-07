@@ -3,9 +3,9 @@
 #ifndef CVLIB_CALIB3D_BUNDLE_ADJUSTMENT_H_
 #define CVLIB_CALIB3D_BUNDLE_ADJUSTMENT_H_
 
-#include "../types.h"
-#include "../error_codes.h"
-#include "../optimize/lm.h"
+#include "types.h"
+#include "error_codes.h"
+#include "optimize/lm.h"
 
 #include <cstdint>
 

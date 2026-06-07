@@ -3,9 +3,9 @@
 #ifndef CVLIB_CALIB3D_TRANSFORMS_H_
 #define CVLIB_CALIB3D_TRANSFORMS_H_
 
-#include "../types.h"
-#include "../error_codes.h"
-#include "rotation.h"
+#include "types.h"
+#include "error_codes.h"
+#include "calib3d/rotation.h"
 
 #include <cstdint>
 

@@ -3,7 +3,7 @@
 #ifndef CVLIB_OPTIMIZE_MANIFOLD_H_
 #define CVLIB_OPTIMIZE_MANIFOLD_H_
 
-#include "../types.h"
+#include "types.h"
 
 #include <cstdint>
 

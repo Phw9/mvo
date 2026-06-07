@@ -3,9 +3,9 @@
 #ifndef CVLIB_FILTER_IMU_FILTER_H_
 #define CVLIB_FILTER_IMU_FILTER_H_
 
-#include "states.h"
-#include "../types.h"
-#include "../error_codes.h"
+#include "filter/states.h"
+#include "types.h"
+#include "error_codes.h"
 
 namespace cvlib {
 namespace filter {

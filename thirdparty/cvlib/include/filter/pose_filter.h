@@ -3,10 +3,10 @@
 #ifndef CVLIB_FILTER_POSE_FILTER_H_
 #define CVLIB_FILTER_POSE_FILTER_H_
 
-#include "iekf.h"
-#include "states.h"
-#include "../types.h"
-#include "../error_codes.h"
+#include "filter/iekf.h"
+#include "filter/states.h"
+#include "types.h"
+#include "error_codes.h"
 
 namespace cvlib {
 namespace filter {

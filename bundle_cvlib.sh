@@ -44,7 +44,15 @@ if [[ ! -f "$cvlib_source_dir/CMakeLists.txt" ]]; then
     exit 1
 fi
 
-build_dir="$script_dir/build/cvlib_package"
+if [[ -z "$platform" ]]; then
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) platform="msvc" ;;
+        Darwin*) platform="macos" ;;
+        *) platform="linux" ;;
+    esac
+fi
+config_lower="$(printf '%s' "$config" | tr '[:upper:]' '[:lower:]')"
+build_dir="$script_dir/build/cvlib_package/$platform/$config_lower"
 cmake_args=(
     -S "$cvlib_source_dir"
     -B "$build_dir"
@@ -52,6 +60,11 @@ cmake_args=(
     -DCVLIB_BUILD_TESTS=OFF
     -DCVLIB_BUILD_PYTHON=OFF
 )
+if [[ "$platform" == "linux" || "$platform" == "unix" ]]; then
+    linux_cxx_flags="${CXXFLAGS:-}"
+    linux_cxx_flags="${linux_cxx_flags:+$linux_cxx_flags }-Wno-unused-function"
+    cmake_args+=("-DCMAKE_CXX_FLAGS=$linux_cxx_flags")
+fi
 if [[ -n "$generator" ]]; then
     cmake_args=(-G "$generator" "${cmake_args[@]}")
 fi
@@ -68,32 +81,47 @@ if [[ ! -d "$cvlib_include_source" ]]; then
     cvlib_include_source="$cvlib_source_dir/include"
 fi
 cp -R "$cvlib_include_source/." "$include_dest/"
+while IFS= read -r -d '' header; do
+    perl -0pi -e 's/#include "cvlib\//#include "/g' "$header"
+done < <(find "$include_dest" -type f -name '*.h' -print0)
 
-library="$(
-    find "$build_dir" -type f \( \
-        -name cvlib_core.lib -o \
-        -name libcvlib_core.a -o \
-        -name libcvlib_core.so -o \
-        -name libcvlib_core.dylib \
-    \) | sort | head -n 1
-)"
-if [[ -z "$library" ]]; then
-    echo "cvlib library was not produced under $build_dir" >&2
+case "$platform" in
+    msvc|windows)
+        library_names=(cvlib_core.lib)
+        ;;
+    linux|unix)
+        library_names=(libcvlib_core.a libcvlib_core.so)
+        ;;
+    macos|darwin)
+        library_names=(libcvlib_core.a libcvlib_core.dylib)
+        ;;
+    *)
+        library_names=(cvlib_core.lib libcvlib_core.a libcvlib_core.so libcvlib_core.dylib)
+        ;;
+esac
+
+libraries=()
+for library_name in "${library_names[@]}"; do
+    while IFS= read -r library; do
+        libraries+=("$library")
+    done < <(find "$build_dir" -type f -name "$library_name" | sort)
+done
+if [[ ${#libraries[@]} -eq 0 ]]; then
+    echo "cvlib library for platform '$platform' was not produced under $build_dir" >&2
     exit 1
 fi
 
-if [[ -z "$platform" ]]; then
-    case "$(uname -s)" in
-        MINGW*|MSYS*|CYGWIN*) platform="msvc" ;;
-        Darwin*) platform="macos" ;;
-        *) platform="linux" ;;
-    esac
-fi
-config_lower="$(printf '%s' "$config" | tr '[:upper:]' '[:lower:]')"
 lib_dest="$bundle_root/lib/$platform/$config_lower"
 mkdir -p "$lib_dest"
-cp "$library" "$lib_dest/"
+for library_name in "${library_names[@]}"; do
+    rm -f "$lib_dest/$library_name"
+done
+for library in "${libraries[@]}"; do
+    cp "$library" "$lib_dest/"
+done
 
 echo "cvlib bundled:"
 echo "  headers: $include_dest"
-echo "  library: $lib_dest/$(basename "$library")"
+for library in "${libraries[@]}"; do
+    echo "  library: $lib_dest/$(basename "$library")"
+done

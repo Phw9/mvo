@@ -3,7 +3,7 @@
 #ifndef CVLIB_CALIB3D_SE3_MANIFOLD_H_
 #define CVLIB_CALIB3D_SE3_MANIFOLD_H_
 
-#include "../types.h"
+#include "types.h"
 
 #include <cstdint>
 

@@ -250,7 +250,7 @@ cvlib_is_available() {
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-build_dir="$script_dir/build"
+build_root="$script_dir/build"
 
 add_python_user_scripts_to_path
 
@@ -307,6 +307,7 @@ case "$(uname -s)" in
 esac
 
 config_lower="$(printf '%s' "$config" | tr '[:upper:]' '[:lower:]')"
+build_dir="$build_root/$cvlib_platform/$config_lower"
 if ! cvlib_is_available; then
     "$script_dir/bundle_cvlib.sh" --config "$config" --platform "$cvlib_platform"
 fi

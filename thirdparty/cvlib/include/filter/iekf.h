@@ -3,9 +3,9 @@
 #ifndef CVLIB_FILTER_IEKF_H_
 #define CVLIB_FILTER_IEKF_H_
 
-#include "eskf.h"
-#include "../types.h"
-#include "../error_codes.h"
+#include "filter/eskf.h"
+#include "types.h"
+#include "error_codes.h"
 
 #include <cstdint>
 
