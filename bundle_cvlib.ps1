@@ -49,7 +49,7 @@ if ($Generator -ne "") {
     $ConfigureArgs = @("-G", $Generator) + $ConfigureArgs
 }
 
-& cmake @ConfigureArgs
+& cmake --log-level=WARNING @ConfigureArgs
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

@@ -56,7 +56,7 @@ struct KltParameters {
     int32_t max_iterations = 30;
     float64_t epsilon = 0.01;
     float64_t min_eig_threshold = 1.0e-4;
-    int32_t fallback_search_radius = 5;
+    int32_t fallback_search_radius = 0;
     float64_t fallback_error_threshold = 5.0;
 };
 

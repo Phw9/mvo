@@ -259,7 +259,7 @@ if ($env:MVO_RERUN_SDK_URL -ne "") {
     $ConfigureArgs += "-DMVO_RERUN_SDK_URL=$env:MVO_RERUN_SDK_URL"
 }
 
-& cmake @ConfigureArgs
+& cmake --log-level=WARNING @ConfigureArgs
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

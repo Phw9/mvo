@@ -69,7 +69,7 @@ if [[ -n "$generator" ]]; then
     cmake_args=(-G "$generator" "${cmake_args[@]}")
 fi
 
-cmake "${cmake_args[@]}"
+cmake --log-level=WARNING "${cmake_args[@]}"
 cmake --build "$build_dir" --config "$config"
 
 bundle_root="$script_dir/thirdparty/cvlib"

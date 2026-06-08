@@ -326,5 +326,5 @@ if [[ -n "${MVO_RERUN_SDK_URL:-}" ]]; then
     cmake_args+=("-DMVO_RERUN_SDK_URL=$MVO_RERUN_SDK_URL")
 fi
 
-cmake "${cmake_args[@]}"
+cmake --log-level=WARNING "${cmake_args[@]}"
 cmake --build "$build_dir" --config "$config"
