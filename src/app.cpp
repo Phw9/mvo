@@ -24,7 +24,6 @@ bool should_use_for_pnp(const MapPoint& point,
                         const MappingParameters& parameters) {
     const int32_t unseen_frames = frame_id - point.last_seen_frame;
     return point.has_position &&
-           point.age <= parameters.max_active_age &&
            unseen_frames <= parameters.max_unseen_frames &&
            point.track_length >= parameters.min_pnp_track_length &&
            point.last_reprojection_error <=
@@ -219,11 +218,10 @@ int32_t run_app(AppConfig config) {
                     if (static_cast<int32_t>(pnp_image_points.size()) >=
                         config.parameters.pnp.min_tracks) {
                         const Pose initial_pose = state.last_pose;
-                        PnpParameters pnp_parameters = config.parameters.pnp;
-                        pnp_parameters.ransac_iterations = 0;
                         if (run_pnp(&pnp_map_points, &pnp_image_points,
                                     config.camera, initial_pose,
-                                    pnp_parameters, config.debug_geometry,
+                                    config.parameters.pnp,
+                                    config.debug_geometry,
                                     &state.last_pose)) {
                             ++state.pnp_success;
                             pnp_ok = true;

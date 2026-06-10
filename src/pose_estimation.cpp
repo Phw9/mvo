@@ -190,8 +190,9 @@ bool run_pnp(std::vector<cv::Point3f>* map_points,
     Pose candidate = initial_pose;
     std::string reject_reason;
     int32_t inlier_count = 0;
+    const bool use_ransac = parameters.ransac_iterations > 0;
     if (static_cast<int32_t>(map_points->size()) >= parameters.min_tracks &&
-        parameters.ransac_iterations > 0) {
+        use_ransac) {
         std::vector<cv::Point3f> ransac_map_points;
         std::vector<cv::Point2f> ransac_image_points;
         ok = run_pnp_ransac(
@@ -201,9 +202,11 @@ bool run_pnp(std::vector<cv::Point3f>* map_points,
         if (ok) {
             *map_points = ransac_map_points;
             *image_points = ransac_image_points;
+        } else {
+            reject_reason = "ransac_failed";
         }
     }
-    if (!ok &&
+    if (!ok && !use_ransac &&
         static_cast<int32_t>(map_points->size()) >= parameters.min_tracks) {
         ok = solve_pnp_once(*map_points, *image_points, camera, initial_pose,
                             &candidate, &report, &ec);
