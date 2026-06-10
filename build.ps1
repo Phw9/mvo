@@ -27,6 +27,17 @@ $RerunVersion = if ([string]::IsNullOrWhiteSpace($env:MVO_RERUN_VERSION)) {
 } else {
     $env:MVO_RERUN_VERSION
 }
+$DependencyRoot = if (![string]::IsNullOrWhiteSpace($env:MVO_DEPS_ROOT)) {
+    $env:MVO_DEPS_ROOT
+} elseif (![string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    Join-Path $env:LOCALAPPDATA "MVO"
+} elseif (![string]::IsNullOrWhiteSpace($env:XDG_CACHE_HOME)) {
+    Join-Path $env:XDG_CACHE_HOME "mvo"
+} elseif (![string]::IsNullOrWhiteSpace($env:HOME)) {
+    Join-Path (Join-Path $env:HOME ".cache") "mvo"
+} else {
+    Join-Path $ScriptDir ".deps"
+}
 
 $InstallOptionSeen = $PSBoundParameters.ContainsKey("InstallOpenCV") -or
     $PSBoundParameters.ContainsKey("InstallRerun") -or
@@ -43,7 +54,8 @@ if ($NoInstall) {
 }
 
 $OpenCVDir = $env:OpenCV_DIR
-$DefaultOpenCvDir = Join-Path $env:LOCALAPPDATA "rtk\opencv-$OpenCVVersion\opencv\build"
+$DefaultOpenCvRoot = Join-Path $DependencyRoot "opencv-$OpenCVVersion"
+$DefaultOpenCvDir = Join-Path $DefaultOpenCvRoot "opencv\build"
 if (($null -eq $OpenCVDir -or $OpenCVDir -eq "") -and
     (Test-Path (Join-Path $DefaultOpenCvDir "OpenCVConfig.cmake"))) {
     $OpenCVDir = $DefaultOpenCvDir
@@ -59,6 +71,8 @@ Install OpenCV, then rerun .\build.ps1:
 
 If OpenCV is already installed in a custom location, set OpenCV_DIR to the
 directory containing OpenCVConfig.cmake.
+
+Set MVO_DEPS_ROOT to change the default per-user dependency install root.
 "@)
 }
 
@@ -149,7 +163,7 @@ function Add-PythonUserScriptsToPath {
 }
 
 function Install-OpenCVPackage {
-    $InstallRoot = Join-Path $env:LOCALAPPDATA "rtk\opencv-$OpenCVVersion"
+    $InstallRoot = $DefaultOpenCvRoot
     $OpenCVUrl = if ([string]::IsNullOrWhiteSpace($env:MVO_OPENCV_WINDOWS_URL)) {
         "https://github.com/opencv/opencv/releases/download/$OpenCVVersion/opencv-$OpenCVVersion-windows.exe"
     } else {
@@ -178,12 +192,20 @@ function Install-OpenCVPackage {
 }
 
 function Install-RerunPackage {
+    $PipArgs = @(
+        "-m", "pip", "install",
+        "--disable-pip-version-check",
+        "--no-warn-script-location",
+        "--user",
+        "rerun-sdk==$RerunVersion"
+    )
+
     if (Get-Command py -ErrorAction SilentlyContinue) {
-        & py -m pip install --user "rerun-sdk==$RerunVersion"
+        & py @PipArgs
     } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-        & python -m pip install --user "rerun-sdk==$RerunVersion"
+        & python @PipArgs
     } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-        & python3 -m pip install --user "rerun-sdk==$RerunVersion"
+        & python3 @PipArgs
     } else {
         Show-RerunPrerequisites
         exit 1
@@ -255,7 +277,7 @@ $ConfigureArgs = @(
 if ($OpenCVDir -ne "") {
     $ConfigureArgs += "-DOpenCV_DIR=$OpenCVDir"
 }
-if ($env:MVO_RERUN_SDK_URL -ne "") {
+if (-not [string]::IsNullOrWhiteSpace($env:MVO_RERUN_SDK_URL)) {
     $ConfigureArgs += "-DMVO_RERUN_SDK_URL=$env:MVO_RERUN_SDK_URL"
 }
 

@@ -1,4 +1,5 @@
 build/
+*.rrd
 thirdparty/DBoW2/build/
 thirdparty/DBoW2/lib/*
 !thirdparty/DBoW2/lib/libDBoW2.a

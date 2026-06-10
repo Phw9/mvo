@@ -279,5 +279,8 @@ endif()]]
     endif()
     add_subdirectory("${rerun_sdk_SOURCE_DIR}" "${rerun_sdk_BINARY_DIR}")
 endif()
+if(MSVC AND TARGET rerun_sdk)
+    target_compile_options(rerun_sdk PRIVATE /utf-8 /wd4819)
+endif()
 target_link_libraries(mvo_cvlib PRIVATE rerun_sdk)
 target_compile_definitions(mvo_cvlib PRIVATE MVO_HAS_RERUN=1)

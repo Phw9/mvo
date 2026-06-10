@@ -116,10 +116,20 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 opencv_version="${MVO_OPENCV_VERSION:-4.13.0}"
-if [[ -n "${LOCALAPPDATA:-}" ]]; then
-    opencv_bin="$(to_unix_path "$LOCALAPPDATA")/rtk/opencv-$opencv_version/opencv/build/x64/vc16/bin"
-    add_path_dir "$opencv_bin"
+dependency_root="${MVO_DEPS_ROOT:-}"
+if [[ -n "$dependency_root" ]]; then
+    dependency_root="$(to_unix_path "$dependency_root")"
+elif [[ -n "${LOCALAPPDATA:-}" ]]; then
+    dependency_root="$(to_unix_path "$LOCALAPPDATA")/MVO"
+elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+    dependency_root="$XDG_CACHE_HOME/mvo"
+elif [[ -n "${HOME:-}" ]]; then
+    dependency_root="$HOME/.cache/mvo"
+else
+    dependency_root="$script_dir/.deps"
 fi
+opencv_bin="$dependency_root/opencv-$opencv_version/opencv/build/x64/vc16/bin"
+add_path_dir "$opencv_bin"
 add_python_user_scripts_to_path
 
 case "$(uname -s)" in

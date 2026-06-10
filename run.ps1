@@ -22,6 +22,17 @@ $OpenCVVersion = if ([string]::IsNullOrWhiteSpace($env:MVO_OPENCV_VERSION)) {
 } else {
     $env:MVO_OPENCV_VERSION
 }
+$DependencyRoot = if (![string]::IsNullOrWhiteSpace($env:MVO_DEPS_ROOT)) {
+    $env:MVO_DEPS_ROOT
+} elseif (![string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    Join-Path $env:LOCALAPPDATA "MVO"
+} elseif (![string]::IsNullOrWhiteSpace($env:XDG_CACHE_HOME)) {
+    Join-Path $env:XDG_CACHE_HOME "mvo"
+} elseif (![string]::IsNullOrWhiteSpace($env:HOME)) {
+    Join-Path (Join-Path $env:HOME ".cache") "mvo"
+} else {
+    Join-Path $ScriptDir ".deps"
+}
 
 function Add-PathDir {
     param([string]$PathDir)
@@ -57,7 +68,7 @@ function Add-PythonUserScriptsToPath {
     }
 }
 
-$DefaultOpenCvBin = Join-Path $env:LOCALAPPDATA "rtk\opencv-$OpenCVVersion\opencv\build\x64\vc16\bin"
+$DefaultOpenCvBin = Join-Path $DependencyRoot "opencv-$OpenCVVersion\opencv\build\x64\vc16\bin"
 Add-PathDir $DefaultOpenCvBin
 Add-PythonUserScriptsToPath
 

@@ -7,6 +7,13 @@ install_rerun=false
 install_option_seen=false
 opencv_version="${MVO_OPENCV_VERSION:-4.13.0}"
 rerun_version="${MVO_RERUN_VERSION:-0.33.0}"
+pip_install_args=(
+    install
+    --disable-pip-version-check
+    --no-warn-script-location
+    --user
+    "rerun-sdk==$rerun_version"
+)
 
 usage() {
     echo "Usage: ./build.sh [--config Release|Debug] [--install-opencv|--install-rerun|--install-all|--no-install]"
@@ -188,11 +195,11 @@ install_rerun_package() {
     case "$(uname -s)" in
         MINGW*|MSYS*|CYGWIN*)
             if command -v py >/dev/null 2>&1; then
-                py -m pip install --user "rerun-sdk==$rerun_version"
+                py -m pip "${pip_install_args[@]}"
             elif command -v python >/dev/null 2>&1; then
-                python -m pip install --user "rerun-sdk==$rerun_version"
+                python -m pip "${pip_install_args[@]}"
             elif command -v python3 >/dev/null 2>&1; then
-                python3 -m pip install --user "rerun-sdk==$rerun_version"
+                python3 -m pip "${pip_install_args[@]}"
             else
                 print_rerun_prerequisites
                 exit 1
@@ -200,11 +207,11 @@ install_rerun_package() {
             ;;
         *)
             if command -v python3 >/dev/null 2>&1; then
-                python3 -m pip install --user "rerun-sdk==$rerun_version"
+                python3 -m pip "${pip_install_args[@]}"
             elif command -v python >/dev/null 2>&1; then
-                python -m pip install --user "rerun-sdk==$rerun_version"
+                python -m pip "${pip_install_args[@]}"
             elif command -v pip3 >/dev/null 2>&1; then
-                pip3 install --user "rerun-sdk==$rerun_version"
+                pip3 "${pip_install_args[@]}"
             elif command -v cargo >/dev/null 2>&1; then
                 cargo install rerun-cli --locked
             else
@@ -251,14 +258,23 @@ cvlib_is_available() {
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build_root="$script_dir/build"
+dependency_root="${MVO_DEPS_ROOT:-}"
+if [[ -n "$dependency_root" ]]; then
+    dependency_root="$(to_unix_path "$dependency_root")"
+elif [[ -n "${LOCALAPPDATA:-}" ]]; then
+    dependency_root="$(to_unix_path "$LOCALAPPDATA")/MVO"
+elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+    dependency_root="$XDG_CACHE_HOME/mvo"
+elif [[ -n "${HOME:-}" ]]; then
+    dependency_root="$HOME/.cache/mvo"
+else
+    dependency_root="$script_dir/.deps"
+fi
 
 add_python_user_scripts_to_path
 
 opencv_dir="${OpenCV_DIR:-}"
-default_opencv_dir=""
-if [[ -n "${LOCALAPPDATA:-}" ]]; then
-    default_opencv_dir="$(to_unix_path "$LOCALAPPDATA")/rtk/opencv-$opencv_version/opencv/build"
-fi
+default_opencv_dir="$dependency_root/opencv-$opencv_version/opencv/build"
 if [[ -z "$opencv_dir" && -n "$default_opencv_dir" && -f "$default_opencv_dir/OpenCVConfig.cmake" ]]; then
     opencv_dir="$default_opencv_dir"
 fi
@@ -322,7 +338,7 @@ cmake_args=(
 if [[ -n "$opencv_dir" ]]; then
     cmake_args+=("-DOpenCV_DIR=$opencv_dir")
 fi
-if [[ -n "${MVO_RERUN_SDK_URL:-}" ]]; then
+if [[ -n "${MVO_RERUN_SDK_URL:-}" && "$MVO_RERUN_SDK_URL" =~ [^[:space:]] ]]; then
     cmake_args+=("-DMVO_RERUN_SDK_URL=$MVO_RERUN_SDK_URL")
 fi
 
