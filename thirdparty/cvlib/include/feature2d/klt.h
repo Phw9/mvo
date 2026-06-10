@@ -27,6 +27,21 @@ struct KltImageView {
 };
 
 /*
+Read-only float32 grayscale image view.
+
+@param data Row-major grayscale samples.
+@param rows Image row count.
+@param cols Image column count.
+@param stride Elements between consecutive rows.
+*/
+struct KltImageViewF32 {
+    const float32_t* data = nullptr;
+    int32_t rows = 0;
+    int32_t cols = 0;
+    int32_t stride = 0;
+};
+
+/*
 Two-dimensional feature point.
 
 @param x Horizontal pixel coordinate.
@@ -88,6 +103,28 @@ ErrorCode klt_track(const KltImageView* prev_image,
                     KltPoint* next_points,
                     uint8_t* status,
                     float64_t* errors = nullptr);
+
+/*
+Tracks points from float32 prev_image into float32 next_image.
+
+@param prev_image Previous grayscale image.
+@param next_image Current grayscale image.
+@param prev_points Input points in prev_image.
+@param point_count Number of points to track.
+@param parameters Tracker parameters.
+@param next_points Output points in next_image.
+@param status Output track status values, 1 for success.
+@param errors Optional output mean absolute patch errors.
+@returns ErrorCode.
+*/
+ErrorCode klt_track_f32(const KltImageViewF32* prev_image,
+                        const KltImageViewF32* next_image,
+                        const KltPoint* prev_points,
+                        int32_t point_count,
+                        const KltParameters* parameters,
+                        KltPoint* next_points,
+                        uint8_t* status,
+                        float64_t* errors = nullptr);
 
 }  // namespace feature2d
 }  // namespace cvlib
