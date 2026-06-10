@@ -1,5 +1,6 @@
 #include "feature.h"
 
+#include "feature2d/features.h"
 #include "converter.h"
 #include "feature2d/klt.h"
 
@@ -60,6 +61,88 @@ bool superpoint_unavailable(const FeatureParameters& parameters,
               << " superglue_model=" << parameters.superglue_model
               << std::endl;
     return false;
+}
+
+cvlib::feature2d::FeatureImageView make_cvlib_feature_image_view(
+    const cv::Mat& image,
+    std::vector<cvlib::float64_t>* pixels) {
+    cvlib::feature2d::FeatureImageView view;
+    pixels->clear();
+    if (!image.empty()) {
+        cv::Mat gray;
+        if (image.channels() == 1) {
+            gray = image;
+        } else {
+            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+        }
+        cv::Mat gray64;
+        gray.convertTo(gray64, CV_64F);
+        pixels->resize(static_cast<std::size_t>(gray64.rows * gray64.cols));
+        for (int32_t row = 0; row < gray64.rows; ++row) {
+            const double* src = gray64.ptr<double>(row);
+            for (int32_t col = 0; col < gray64.cols; ++col) {
+                (*pixels)[static_cast<std::size_t>(
+                    row * gray64.cols + col)] = src[col];
+            }
+        }
+        view.data = pixels->data();
+        view.rows = gray64.rows;
+        view.cols = gray64.cols;
+        view.stride = gray64.cols;
+    }
+    return view;
+}
+
+cvlib::feature2d::FeatureMaskView make_cvlib_feature_mask_view(
+    const cv::Mat& mask) {
+    cvlib::feature2d::FeatureMaskView view;
+    if (!mask.empty()) {
+        view.data = mask.ptr<uint8_t>(0);
+        view.rows = mask.rows;
+        view.cols = mask.cols;
+        view.stride = static_cast<int32_t>(mask.step1());
+    }
+    return view;
+}
+
+bool detect_good_features_with_cvlib(const cv::Mat& image,
+                                     int32_t max_points,
+                                     double quality,
+                                     double min_distance,
+                                     const cv::Mat* mask,
+                                     std::vector<cv::Point2f>* points) {
+    bool ok = false;
+    points->clear();
+    if (max_points > 0 && !image.empty()) {
+        std::vector<cvlib::float64_t> image_pixels;
+        const cvlib::feature2d::FeatureImageView image_view =
+            make_cvlib_feature_image_view(image, &image_pixels);
+        cvlib::feature2d::FeatureMaskView mask_view;
+        const cvlib::feature2d::FeatureMaskView* mask_view_ptr = nullptr;
+        if (mask != nullptr && !mask->empty()) {
+            mask_view = make_cvlib_feature_mask_view(*mask);
+            mask_view_ptr = &mask_view;
+        }
+        cvlib::feature2d::GoodFeaturesToTrackParameters cvlib_parameters =
+            cvlib::feature2d::good_features_to_track_default_parameters();
+        cvlib_parameters.max_corners = max_points;
+        cvlib_parameters.quality_level = quality;
+        cvlib_parameters.min_distance = min_distance;
+        std::vector<cvlib::feature2d::Keypoint> keypoints;
+        const cvlib::ErrorCode ec =
+            cvlib::feature2d::good_features_to_track(
+                &image_view, mask_view_ptr, &cvlib_parameters, &keypoints);
+        if (ec == cvlib::ErrorCode::kSuccess) {
+            points->reserve(keypoints.size());
+            for (const cvlib::feature2d::Keypoint& keypoint : keypoints) {
+                points->push_back(cv::Point2f(
+                    static_cast<float>(keypoint.x),
+                    static_cast<float>(keypoint.y)));
+            }
+            ok = !points->empty();
+        }
+    }
+    return ok;
 }
 
 void make_existing_mask(const cv::Mat& image,
@@ -396,6 +479,9 @@ bool match_orb_descriptors_to_current(
         if (i >= static_cast<int32_t>(prev_points.size())) {
             break;
         }
+        if (!map_points[static_cast<std::size_t>(i)].has_position) {
+            continue;
+        }
         const cv::Mat& descriptor =
             map_points[static_cast<std::size_t>(i)].descriptor;
         if (!descriptor.empty()) {
@@ -663,9 +749,9 @@ bool detect_initial_points(const cv::Mat& image,
     }
     bool ok = false;
     points->clear();
-    cv::goodFeaturesToTrack(image, *points, parameters.max_init_tracks,
-                            parameters.klt_quality,
-                            parameters.klt_min_distance);
+    ok = detect_good_features_with_cvlib(
+        image, parameters.max_init_tracks, parameters.klt_quality,
+        parameters.klt_min_distance, nullptr, points);
     ok = static_cast<int32_t>(points->size()) >=
          parameters.min_init_tracks;
     return ok;
@@ -731,10 +817,11 @@ bool detect_refresh_points(const cv::Mat& image,
             const cv::Rect cell_rect(x0, y0, x1 - x0, y1 - y0);
             if (cell_rect.width > 0 && cell_rect.height > 0) {
                 std::vector<cv::Point2f> cell_points;
-                cv::goodFeaturesToTrack(image(cell_rect), cell_points,
-                                        max_per_cell, parameters.klt_quality,
-                                        parameters.klt_min_distance,
-                                        mask(cell_rect));
+                const cv::Mat cell_image = image(cell_rect);
+                const cv::Mat cell_mask = mask(cell_rect);
+                detect_good_features_with_cvlib(
+                    cell_image, max_per_cell, parameters.klt_quality,
+                    parameters.klt_min_distance, &cell_mask, &cell_points);
                 for (const cv::Point2f& cell_point : cell_points) {
                     const cv::Point2f point(
                         cell_point.x + static_cast<float>(x0),
@@ -756,11 +843,10 @@ bool detect_refresh_points(const cv::Mat& image,
 
     if (static_cast<int32_t>(points->size()) < max_points) {
         std::vector<cv::Point2f> extra_points;
-        cv::goodFeaturesToTrack(image, extra_points,
-                                max_points -
-                                    static_cast<int32_t>(points->size()),
-                                parameters.klt_quality,
-                                parameters.klt_min_distance, mask);
+        detect_good_features_with_cvlib(
+            image, max_points - static_cast<int32_t>(points->size()),
+            parameters.klt_quality, parameters.klt_min_distance, &mask,
+            &extra_points);
         for (const cv::Point2f& point : extra_points) {
             if (static_cast<int32_t>(points->size()) < max_points &&
                 point_is_far_from_existing(point, occupied,
@@ -920,48 +1006,190 @@ struct KltPassResult {
     std::vector<int32_t> tracked_indices;
     int32_t raw_kept = 0;
     int32_t cvlib_error = 0;
+    int32_t homography_inliers = 0;
     double fb_threshold = 1.0;
     int32_t window_size = 21;
     int32_t pyramid_levels = 3;
     bool used_wide_search = false;
+    bool used_homography_prediction = false;
 };
 
-void run_klt_pass(const cv::Mat& prev_image,
-                  const cv::Mat& image,
-                  const std::vector<cv::Point2f>& prev_points,
-                  const FeatureParameters& parameters,
-                  int32_t window_size,
-                  int32_t pyramid_levels,
-                  bool adaptive_fb,
-                  KltPassResult* result) {
+void reset_klt_pass_result(const FeatureParameters& parameters,
+                           int32_t window_size,
+                           int32_t pyramid_levels,
+                           bool adaptive_fb,
+                           KltPassResult* result) {
     result->tracked_prev.clear();
     result->tracked_next.clear();
     result->tracked_indices.clear();
     result->raw_kept = 0;
     result->cvlib_error = 0;
+    result->homography_inliers = 0;
     result->fb_threshold = parameters.max_forward_backward_error;
     result->window_size = window_size;
     result->pyramid_levels = pyramid_levels;
     result->used_wide_search = adaptive_fb;
+    result->used_homography_prediction = false;
+}
+
+bool estimate_frame_homography(const cv::Mat& prev_image,
+                               const cv::Mat& image,
+                               const FeatureParameters& parameters,
+                               cv::Mat* homography,
+                               int32_t* inlier_count) {
+    bool ok = false;
+    *inlier_count = 0;
+    homography->release();
+    cv::Ptr<cv::ORB> orb = create_orb(parameters);
+    std::vector<cv::KeyPoint> prev_keypoints;
+    std::vector<cv::KeyPoint> next_keypoints;
+    cv::Mat prev_descriptors;
+    cv::Mat next_descriptors;
+    orb->detectAndCompute(prev_image, cv::noArray(), prev_keypoints,
+                          prev_descriptors);
+    orb->detectAndCompute(image, cv::noArray(), next_keypoints,
+                          next_descriptors);
+    if (!prev_descriptors.empty() && !next_descriptors.empty()) {
+        cv::BFMatcher matcher(cv::NORM_HAMMING, false);
+        std::vector<std::vector<cv::DMatch>> matches;
+        matcher.knnMatch(prev_descriptors, next_descriptors, matches,
+                         std::min(2, next_descriptors.rows));
+        std::vector<cv::Point2f> prev_matched;
+        std::vector<cv::Point2f> next_matched;
+        for (const std::vector<cv::DMatch>& match_pair : matches) {
+            if (!match_pair.empty()) {
+                const cv::DMatch& best = match_pair[0];
+                const bool ratio_ok =
+                    match_pair.size() < 2 ||
+                    best.distance <=
+                        static_cast<float>(parameters.orb_match_ratio) *
+                            match_pair[1].distance;
+                const bool distance_ok =
+                    best.distance <=
+                    static_cast<float>(parameters.orb_max_match_distance);
+                if (ratio_ok && distance_ok &&
+                    best.queryIdx >= 0 &&
+                    best.queryIdx <
+                        static_cast<int32_t>(prev_keypoints.size()) &&
+                    best.trainIdx >= 0 &&
+                    best.trainIdx <
+                        static_cast<int32_t>(next_keypoints.size())) {
+                    prev_matched.push_back(
+                        prev_keypoints[static_cast<std::size_t>(
+                                           best.queryIdx)]
+                            .pt);
+                    next_matched.push_back(
+                        next_keypoints[static_cast<std::size_t>(
+                                           best.trainIdx)]
+                            .pt);
+                }
+            }
+        }
+        if (static_cast<int32_t>(prev_matched.size()) >=
+            parameters.min_init_tracks) {
+            cv::Mat inlier_mask;
+            try {
+                *homography = cv::findHomography(
+                    prev_matched, next_matched, cv::RANSAC,
+                    parameters.orb_ransac_threshold, inlier_mask);
+            } catch (const cv::Exception&) {
+                homography->release();
+            }
+            if (!homography->empty()) {
+                for (int32_t i = 0; i < inlier_mask.rows; ++i) {
+                    if (inlier_mask.at<uchar>(i, 0) != 0) {
+                        ++(*inlier_count);
+                    }
+                }
+                ok = *inlier_count >= parameters.min_init_tracks;
+            }
+        }
+    }
+    return ok;
+}
+
+void make_direct_klt_inputs(
+    const std::vector<cv::Point2f>& prev_points,
+    std::vector<cv::Point2f>* tracking_prev_points,
+    std::vector<int32_t>* original_indices) {
+    tracking_prev_points->clear();
+    original_indices->clear();
+    tracking_prev_points->reserve(prev_points.size());
+    original_indices->reserve(prev_points.size());
+    for (int32_t i = 0; i < static_cast<int32_t>(prev_points.size()); ++i) {
+        tracking_prev_points->push_back(prev_points[static_cast<std::size_t>(i)]);
+        original_indices->push_back(i);
+    }
+}
+
+bool make_homography_klt_inputs(
+    const std::vector<cv::Point2f>& prev_points,
+    const cv::Mat& homography,
+    const cv::Size& image_size,
+    std::vector<cv::Point2f>* tracking_prev_points,
+    std::vector<int32_t>* original_indices) {
+    bool ok = false;
+    tracking_prev_points->clear();
+    original_indices->clear();
+    if (!prev_points.empty() && !homography.empty()) {
+        std::vector<cv::Point2f> predicted_points;
+        cv::perspectiveTransform(prev_points, predicted_points, homography);
+        tracking_prev_points->reserve(predicted_points.size());
+        original_indices->reserve(predicted_points.size());
+        for (int32_t i = 0; i < static_cast<int32_t>(predicted_points.size());
+             ++i) {
+            const cv::Point2f& point =
+                predicted_points[static_cast<std::size_t>(i)];
+            const bool in_bounds =
+                std::isfinite(point.x) && std::isfinite(point.y) &&
+                point.x >= 0.0F &&
+                point.x < static_cast<float>(image_size.width) &&
+                point.y >= 0.0F &&
+                point.y < static_cast<float>(image_size.height);
+            if (in_bounds) {
+                tracking_prev_points->push_back(point);
+                original_indices->push_back(i);
+            }
+        }
+        ok = !tracking_prev_points->empty();
+    }
+    return ok;
+}
+
+void run_klt_from_tracking_points(
+    const cv::Mat& tracking_prev_image,
+    const cv::Mat& image,
+    const std::vector<cv::Point2f>& original_prev_points,
+    const std::vector<cv::Point2f>& tracking_prev_points,
+    const std::vector<int32_t>& original_indices,
+    const FeatureParameters& parameters,
+    int32_t window_size,
+    int32_t pyramid_levels,
+    bool adaptive_fb,
+    KltPassResult* result) {
+    reset_klt_pass_result(parameters, window_size, pyramid_levels, adaptive_fb,
+                          result);
 
     std::vector<uint8_t> status;
     std::vector<uint8_t> backward_status;
     std::vector<cv::Point2f> next_points;
     std::vector<cv::Point2f> backward_points;
-    if (!prev_points.empty()) {
+    if (!tracking_prev_points.empty()) {
         cvlib::ErrorCode ec = track_points_with_cvlib_klt(
-            prev_image, image, prev_points, parameters, window_size,
+            tracking_prev_image, image, tracking_prev_points, parameters,
+            window_size,
             pyramid_levels, &next_points, &status);
         if (ec == cvlib::ErrorCode::kSuccess) {
             ec = track_points_with_cvlib_klt(
-                image, prev_image, next_points, parameters, window_size,
-                pyramid_levels, &backward_points, &backward_status);
+                image, tracking_prev_image, next_points, parameters,
+                window_size, pyramid_levels, &backward_points,
+                &backward_status);
         }
         result->cvlib_error = static_cast<int32_t>(ec);
         if (ec == cvlib::ErrorCode::kSuccess) {
             if (adaptive_fb) {
                 result->fb_threshold = adaptive_forward_backward_threshold(
-                    prev_points, next_points, status, parameters,
+                    tracking_prev_points, next_points, status, parameters,
                     image.size());
             }
             const int32_t track_count = std::min(
@@ -982,27 +1210,93 @@ void run_klt_pass(const cv::Mat& prev_image,
                         static_cast<float>(image.rows);
                 const double dx = static_cast<double>(
                     backward_points[static_cast<std::size_t>(i)].x -
-                    prev_points[static_cast<std::size_t>(i)].x);
+                    tracking_prev_points[static_cast<std::size_t>(i)].x);
                 const double dy = static_cast<double>(
                     backward_points[static_cast<std::size_t>(i)].y -
-                    prev_points[static_cast<std::size_t>(i)].y);
+                    tracking_prev_points[static_cast<std::size_t>(i)].y);
                 const double fb_error = std::sqrt(dx * dx + dy * dy);
                 if (status[static_cast<std::size_t>(i)] != 0U &&
                     backward_status[static_cast<std::size_t>(i)] != 0U &&
                     in_bounds && fb_error <= result->fb_threshold) {
+                    const int32_t original_index =
+                        original_indices[static_cast<std::size_t>(i)];
                     result->tracked_prev.push_back(
-                        prev_points[static_cast<std::size_t>(i)]);
+                        original_prev_points[static_cast<std::size_t>(
+                            original_index)]);
                     result->tracked_next.push_back(
                         next_points[static_cast<std::size_t>(i)]);
-                    result->tracked_indices.push_back(i);
+                    result->tracked_indices.push_back(original_index);
                 }
             }
         }
         if (static_cast<int32_t>(result->tracked_next.size()) >
-            parameters.max_init_tracks) {
-            result->tracked_prev.resize(parameters.max_init_tracks);
-            result->tracked_next.resize(parameters.max_init_tracks);
-            result->tracked_indices.resize(parameters.max_init_tracks);
+            parameters.max_features) {
+            result->tracked_prev.resize(parameters.max_features);
+            result->tracked_next.resize(parameters.max_features);
+            result->tracked_indices.resize(parameters.max_features);
+        }
+    }
+}
+
+void run_klt_pass(const cv::Mat& prev_image,
+                  const cv::Mat& image,
+                  const std::vector<cv::Point2f>& prev_points,
+                  const FeatureParameters& parameters,
+                  int32_t window_size,
+                  int32_t pyramid_levels,
+                  bool adaptive_fb,
+                  KltPassResult* result) {
+    reset_klt_pass_result(parameters, window_size, pyramid_levels, adaptive_fb,
+                          result);
+    if (!prev_points.empty()) {
+        std::vector<cv::Point2f> direct_points;
+        std::vector<int32_t> direct_indices;
+        make_direct_klt_inputs(prev_points, &direct_points, &direct_indices);
+        if (adaptive_fb) {
+            cv::Mat homography;
+            int32_t homography_inliers = 0;
+            const bool homography_ok = estimate_frame_homography(
+                prev_image, image, parameters, &homography,
+                &homography_inliers);
+            std::vector<cv::Point2f> predicted_points;
+            std::vector<int32_t> predicted_indices;
+            const bool prediction_ok = homography_ok &&
+                                       make_homography_klt_inputs(
+                                           prev_points, homography,
+                                           image.size(), &predicted_points,
+                                           &predicted_indices) &&
+                                       static_cast<int32_t>(
+                                           predicted_points.size()) >=
+                                           std::min(
+                                               parameters.min_init_tracks,
+                                               static_cast<int32_t>(
+                                                   prev_points.size()));
+            if (prediction_ok) {
+                cv::Mat warped_prev_image;
+                cv::warpPerspective(prev_image, warped_prev_image, homography,
+                                    image.size(), cv::INTER_LINEAR,
+                                    cv::BORDER_REPLICATE);
+                run_klt_from_tracking_points(
+                    warped_prev_image, image, prev_points, predicted_points,
+                    predicted_indices, parameters, window_size, pyramid_levels,
+                    adaptive_fb, result);
+                result->homography_inliers = homography_inliers;
+                result->used_homography_prediction = true;
+            }
+        }
+        const int32_t direct_retry_threshold = std::min(
+            parameters.min_init_tracks, static_cast<int32_t>(prev_points.size()));
+        if (static_cast<int32_t>(result->tracked_next.size()) <
+            direct_retry_threshold) {
+            KltPassResult direct_result;
+            run_klt_from_tracking_points(
+                prev_image, image, prev_points, direct_points, direct_indices,
+                parameters, window_size, pyramid_levels, adaptive_fb,
+                &direct_result);
+            if (direct_result.tracked_next.size() >
+                result->tracked_next.size()) {
+                *result = direct_result;
+            }
         }
     }
 }
@@ -1071,21 +1365,13 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
     }
     bool ok = false;
     KltPassResult result;
-    run_klt_pass(prev_image, image, prev_points, parameters,
-                 parameters.klt_init_window_size,
-                 parameters.klt_init_pyramid_levels, false, &result);
-    const int32_t retry_threshold = std::min(
-        parameters.min_init_tracks, static_cast<int32_t>(prev_points.size()));
-    if (wide_search &&
-        static_cast<int32_t>(result.tracked_next.size()) < retry_threshold) {
-        KltPassResult retry_result;
-        run_klt_pass(prev_image, image, prev_points, parameters,
-                     parameters.klt_window_size,
-                     parameters.klt_pyramid_levels, true, &retry_result);
-        if (retry_result.tracked_next.size() > result.tracked_next.size()) {
-            result = retry_result;
-        }
-    }
+    const int32_t window_size = wide_search ? parameters.klt_window_size
+                                            : parameters.klt_init_window_size;
+    const int32_t pyramid_levels =
+        wide_search ? parameters.klt_pyramid_levels
+                    : parameters.klt_init_pyramid_levels;
+    run_klt_pass(prev_image, image, prev_points, parameters, window_size,
+                 pyramid_levels, wide_search, &result);
 
     *tracked_prev = result.tracked_prev;
     *tracked_next = result.tracked_next;
@@ -1101,7 +1387,9 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
                   << " fb_thresh=" << result.fb_threshold
                   << " lk_window=" << result.window_size
                   << " lk_levels=" << result.pyramid_levels
-                  << " lk_retry=" << result.used_wide_search
+                  << " lk_wide=" << result.used_wide_search
+                  << " h_predict=" << result.used_homography_prediction
+                  << " h_inliers=" << result.homography_inliers
                   << std::endl;
     }
     ok = static_cast<int32_t>(tracked_next->size()) >=

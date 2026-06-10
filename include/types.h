@@ -30,11 +30,16 @@ struct Pose {
 struct MapPoint {
     cv::Point3f position;
     cv::Mat descriptor;
+    cv::Point2f anchor_observation;
+    Pose anchor_pose;
     int32_t created_frame = 0;
     int32_t last_seen_frame = 0;
+    int32_t anchor_frame = 0;
     int32_t age = 0;
     int32_t track_length = 1;
     double last_reprojection_error = 0.0;
+    bool has_position = true;
+    bool has_anchor = false;
     bool candidate = true;
 };
 

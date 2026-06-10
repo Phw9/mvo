@@ -15,6 +15,8 @@ headers and libraries under `thirdparty/cvlib`.
 - Keep source and header filenames lowercase.
 - Keep headers split by function under `include`.
 - Keep `cvlib` consumed through bundled headers and library files.
+- When refreshing bundled `cvlib`, update both `msvc` and `linux` debug/release
+  libraries, not just the current host platform.
 - Do not reintroduce `g2o`; bundle adjustment should use `cvlib`.
 - Rerun visualization is enabled by default through the run scripts.
 

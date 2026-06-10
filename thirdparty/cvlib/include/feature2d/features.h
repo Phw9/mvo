@@ -109,6 +109,27 @@ struct SiftParameters {
 };
 
 /*
+GoodFeaturesToTrack detector parameters.
+
+@param max_corners Maximum output corners; 0 means no explicit cap.
+@param quality_level Minimal accepted quality relative to best response.
+@param min_distance Minimum Euclidean distance between returned corners.
+@param block_size Neighborhood size for the derivative covariance matrix.
+@param gradient_size Sobel aperture size, or -1 for Scharr.
+@param use_harris_detector Use Harris response instead of min eigenvalue.
+@param k Harris detector free parameter.
+*/
+struct GoodFeaturesToTrackParameters {
+    int32_t max_corners = 1000;
+    float64_t quality_level = 0.01;
+    float64_t min_distance = 1.0;
+    int32_t block_size = 3;
+    int32_t gradient_size = 3;
+    bool use_harris_detector = false;
+    float64_t k = 0.04;
+};
+
+/*
 Describes one feature2d implementation and its OpenCV reference.
 
 @param name Feature family name.
@@ -138,6 +159,28 @@ Copies a feature2d status item by index.
 @returns ErrorCode.
 */
 ErrorCode feature_todo_at(int32_t index, FeatureTodo* todo);
+
+/*
+Returns OpenCV-compatible GoodFeaturesToTrack defaults.
+
+@returns GoodFeaturesToTrackParameters.
+*/
+GoodFeaturesToTrackParameters good_features_to_track_default_parameters();
+
+/*
+Finds strong image corners using OpenCV-compatible goodFeaturesToTrack logic.
+
+@param image Input grayscale image.
+@param mask Optional mask; pass nullptr to enable all pixels.
+@param parameters Detector parameters.
+@param keypoints Output corners in OpenCV response order.
+@returns ErrorCode.
+*/
+ErrorCode good_features_to_track(
+    const FeatureImageView* image,
+    const FeatureMaskView* mask,
+    const GoodFeaturesToTrackParameters* parameters,
+    std::vector<Keypoint>* keypoints);
 
 /*
 Returns OpenCV-compatible ORB defaults.

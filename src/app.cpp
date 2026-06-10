@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -46,7 +47,8 @@ bool should_use_for_pnp(const MapPoint& point,
                         int32_t frame_id,
                         const MappingParameters& parameters) {
     const int32_t unseen_frames = frame_id - point.last_seen_frame;
-    return point.age <= parameters.max_active_age &&
+    return point.has_position &&
+           point.age <= parameters.max_active_age &&
            unseen_frames <= parameters.max_unseen_frames &&
            point.track_length >= parameters.min_pnp_track_length &&
            point.last_reprojection_error <=
@@ -64,6 +66,16 @@ void update_tracked_map_point(MapPoint* point,
     if (point->track_length >= parameters.candidate_min_track_length) {
         point->candidate = false;
     }
+}
+
+void update_pending_map_point(MapPoint* point,
+                              int32_t frame_id,
+                              const MappingParameters& parameters) {
+    ++point->age;
+    ++point->track_length;
+    point->last_seen_frame = frame_id;
+    point->candidate = point->track_length <
+                       parameters.candidate_min_track_length;
 }
 
 const char* frontend_name(const FeatureParameters& parameters) {
@@ -221,7 +233,8 @@ int32_t run_app(AppConfig config) {
                                      &tracked_prev, &raw_tracked_next,
                                      &tracked_indices,
                                      config.debug_geometry,
-                                     "frame_" + std::to_string(frame_id), true);
+                                     "frame_" + std::to_string(frame_id),
+                                     true);
                     }
                     for (int32_t i = 0;
                          i < static_cast<int32_t>(raw_tracked_next.size());
@@ -243,11 +256,9 @@ int32_t run_app(AppConfig config) {
                     for (int32_t i = 0;
                          i < static_cast<int32_t>(next_map_points.size());
                          ++i) {
-                        const bool use_for_pnp =
-                            config.parameters.feature.frontend_mode != 1 ||
-                            should_use_for_pnp(
-                                next_map_points[static_cast<std::size_t>(i)],
-                                frame_id, config.parameters.mapping);
+                        const bool use_for_pnp = should_use_for_pnp(
+                            next_map_points[static_cast<std::size_t>(i)],
+                            frame_id, config.parameters.mapping);
                         if (use_for_pnp) {
                             pnp_map_points.push_back(
                                 next_map_points[static_cast<std::size_t>(i)]
@@ -309,10 +320,15 @@ int32_t run_app(AppConfig config) {
                                         i)];
                                 const cv::Point2f& observation =
                                     tracked_next[static_cast<std::size_t>(i)];
-                                const double residual = reprojection_residual(
-                                    point.position, observation,
-                                    state.last_pose, config.camera);
-                                if (std::isfinite(residual) &&
+                                double residual =
+                                    std::numeric_limits<double>::infinity();
+                                if (point.has_position) {
+                                    residual = reprojection_residual(
+                                        point.position, observation,
+                                        state.last_pose, config.camera);
+                                }
+                                if (point.has_position &&
+                                    std::isfinite(residual) &&
                                     residual <=
                                         config.parameters.mapping
                                             .max_point_reprojection_error &&
@@ -337,25 +353,48 @@ int32_t run_app(AppConfig config) {
                                  i < static_cast<int32_t>(
                                          next_map_points.size());
                                  ++i) {
+                                MapPoint point =
+                                    next_map_points[static_cast<std::size_t>(
+                                        i)];
                                 const cv::Point2f& observation =
                                     tracked_next[static_cast<std::size_t>(i)];
-                                const double residual = reprojection_residual(
-                                    next_map_points[static_cast<std::size_t>(i)]
-                                        .position,
-                                    observation, state.last_pose,
-                                    config.camera);
-                                if (std::isfinite(residual) &&
-                                    residual <=
-                                        config.parameters.pnp
-                                            .reprojection_inlier_threshold) {
+                                if (point.has_position) {
+                                    const double residual =
+                                        reprojection_residual(
+                                            point.position, observation,
+                                            state.last_pose, config.camera);
+                                    if (std::isfinite(residual) &&
+                                        residual <=
+                                            config.parameters.pnp
+                                                .reprojection_inlier_threshold) {
+                                        update_tracked_map_point(
+                                            &point, frame_id, residual,
+                                            config.parameters.mapping);
+                                        inlier_points.push_back(observation);
+                                        inlier_map_points.push_back(point);
+                                    }
+                                } else if (point.has_anchor &&
+                                           point.age <
+                                               config.parameters.mapping
+                                                   .max_active_age) {
+                                    update_pending_map_point(
+                                        &point, frame_id,
+                                        config.parameters.mapping);
                                     inlier_points.push_back(observation);
-                                    inlier_map_points.push_back(
-                                        next_map_points[static_cast<std::size_t>(
-                                            i)]);
+                                    inlier_map_points.push_back(point);
                                 }
                             }
                             tracked_next = inlier_points;
                             next_map_points = inlier_map_points;
+                            triangulate_pending_map_points(
+                                tracked_next, state.last_pose, config.camera,
+                                config.parameters, frame_id,
+                                config.debug_geometry, &next_map_points,
+                                &state.all_map_points);
+                            add_pending_feature_tracks(
+                                image, state.last_pose, frame_id,
+                                config.parameters, config.debug_geometry,
+                                &tracked_next, &next_map_points);
                         }
                         if (config.debug_geometry) {
                             std::cout << "lifecycle frame=" << frame_id
@@ -371,6 +410,7 @@ int32_t run_app(AppConfig config) {
                         }
                     }
                     if (pnp_ok &&
+                        config.parameters.feature.frontend_mode == 1 &&
                         static_cast<int32_t>(tracked_next.size()) <
                             config.parameters.mapping
                                 .min_tracked_map_points) {
@@ -453,7 +493,13 @@ int32_t run_app(AppConfig config) {
                     }
                     std::cout << "frame=" << frame_id
                               << " tracks=" << state.prev_points.size()
-                              << " map_points=" << state.map_points.size()
+                              << " map_points="
+                              << count_positioned_map_points(state.map_points)
+                              << " pending="
+                              << state.map_points.size() -
+                                     static_cast<std::size_t>(
+                                         count_positioned_map_points(
+                                             state.map_points))
                               << std::endl;
                 } else {
                     bool recovered_ok = false;
@@ -480,7 +526,13 @@ int32_t run_app(AppConfig config) {
                         state.all_map_points, state.last_pose);
                     std::cout << "frame=" << frame_id
                               << " tracks=" << state.prev_points.size()
-                              << " map_points=" << state.map_points.size()
+                              << " map_points="
+                              << count_positioned_map_points(state.map_points)
+                              << " pending="
+                              << state.map_points.size() -
+                                     static_cast<std::size_t>(
+                                         count_positioned_map_points(
+                                             state.map_points))
                               << " recovered=" << recovered_ok << std::endl;
                 }
             }
@@ -497,7 +549,12 @@ int32_t run_app(AppConfig config) {
               << " keyframes=" << state.keyframes
               << " pnp_success=" << state.pnp_success
               << " loop_queries=" << state.loop_queries
-              << " map_points=" << state.map_points.size()
+              << " map_points=" << count_positioned_map_points(
+                     state.map_points)
+              << " pending="
+              << state.map_points.size() -
+                     static_cast<std::size_t>(
+                         count_positioned_map_points(state.map_points))
               << " exit_code=" << exit_code << std::endl;
     return exit_code;
 }

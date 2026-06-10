@@ -23,7 +23,7 @@ Sorts indices so values[i] appear in descending magnitude order.
 ErrorCode argsort_desc(const float64_t* values, int32_t n, int32_t* indices);
 
 /*
-Computes the determinant of a real square matrix via cofactor expansion.
+Computes the determinant of a real square matrix via LU partial pivoting.
 
 @param m Input n-by-n matrix.
 @param result Output determinant.
