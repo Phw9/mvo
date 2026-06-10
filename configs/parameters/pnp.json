@@ -2,7 +2,6 @@
   "pnp": {
     "min_tracks": 6,
     "min_stable_inliers": 20,
-    "orb_min_stable_inliers": 6,
     "ransac_iterations": 80,
     "ransac_sample_size": 8,
     "reprojection_inlier_threshold": 5.0,

@@ -53,19 +53,5 @@ bool recover_two_view_from_reference(const cv::Mat& reference_image,
                                      bool debug_geometry,
                                      int32_t frame_id,
                                      TrackState* state);
-int32_t refresh_map_points(const cv::Mat& prev_image,
-                           const cv::Mat& image,
-                           const std::vector<cv::Point2f>& prev_existing,
-                           const Pose& prev_pose,
-                           Pose* current_pose,
-                           const CameraIntrinsics& camera,
-                           const MvoParameters& parameters,
-                           int32_t frame_id,
-                           bool run_ba,
-                           bool debug_geometry,
-                           bool aggressive_refresh,
-                           std::vector<cv::Point2f>* current_points,
-                           std::vector<MapPoint>* map_points,
-                           std::vector<cv::Point3f>* all_map_points);
 
 }  // namespace mvo

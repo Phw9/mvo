@@ -10,63 +10,7 @@
 
 #include <iostream>
 
-#include <opencv2/calib3d.hpp>
-
 namespace mvo {
-
-bool select_orb_two_view_matches(const std::vector<cv::Point2f>& points0,
-                                 const std::vector<cv::Point2f>& points1,
-                                 const CameraIntrinsics& camera,
-                                 const MvoParameters& parameters,
-                                 bool debug_geometry,
-                                 TwoViewSelection* selection) {
-    bool ok = false;
-    selection->points0.clear();
-    selection->points1.clear();
-    selection->indices.clear();
-    selection->fundamental_inliers = 0;
-    selection->homography_inliers = 0;
-    selection->homography_ratio = 0.0;
-    selection->selected_model = "none";
-
-    const cv::Mat k = (cv::Mat_<double>(3, 3) << camera.fx, 0.0, camera.cx,
-                       0.0, camera.fy, camera.cy, 0.0, 0.0, 1.0);
-    cv::Mat mask;
-    const cv::Mat e = cv::findEssentialMat(
-        points0, points1, k, cv::RANSAC, 0.999,
-        parameters.feature.orb_ransac_threshold, mask);
-    if (!e.empty()) {
-        cv::Mat r;
-        cv::Mat t;
-        cv::recoverPose(e, points0, points1, k, r, t, mask);
-        for (int32_t i = 0; i < mask.rows; ++i) {
-            if (mask.at<uchar>(i, 0) != 0) {
-                selection->points0.push_back(
-                    points0[static_cast<std::size_t>(i)]);
-                selection->points1.push_back(
-                    points1[static_cast<std::size_t>(i)]);
-                selection->indices.push_back(i);
-            }
-        }
-        selection->fundamental_inliers =
-            static_cast<int32_t>(selection->points0.size());
-    }
-
-    if (selection->fundamental_inliers >=
-        parameters.initializer.min_tracks) {
-        selection->selected_model = "orb_fundamental";
-        ok = true;
-    }
-    if (debug_geometry) {
-        std::cout << "initializer_orb_model input=" << points0.size()
-                  << " essential_inliers="
-                  << selection->fundamental_inliers
-                  << " selected=" << selection->selected_model
-                  << " threshold=" << parameters.feature.orb_ransac_threshold
-                  << std::endl;
-    }
-    return ok;
-}
 
 bool select_two_view_matches(const std::vector<cv::Point2f>& points0,
                              const std::vector<cv::Point2f>& points1,
@@ -172,14 +116,9 @@ bool initialize_two_view(const std::vector<cv::Point2f>& points0,
                          TrackState* state) {
     bool ok = false;
     TwoViewSelection selection;
-    const bool model_ok =
-        parameters.feature.frontend_mode == 1
-            ? select_orb_two_view_matches(points0, points1, camera,
-                                          parameters, debug_geometry,
-                                          &selection)
-            : select_two_view_matches(points0, points1,
-                                      parameters.initializer,
-                                      debug_geometry, &selection);
+    const bool model_ok = select_two_view_matches(
+        points0, points1, parameters.initializer, debug_geometry,
+        &selection);
     cvlib::Matrix k = make_camera_matrix(camera);
     cvlib::Matrix pix0 = points2f_to_matrix(selection.points0);
     cvlib::Matrix pix1 = points2f_to_matrix(selection.points1);
@@ -253,20 +192,12 @@ bool initialize_two_view(const std::vector<cv::Point2f>& points0,
                 pose1, camera);
             const double parallax_deg = median_parallax_deg(
                 map_point_positions(state->map_points), pose0, pose1);
-            const double min_parallax_deg =
-                parameters.feature.frontend_mode == 1
-                    ? parameters.initializer.orb_min_parallax_deg
-                    : parameters.initializer.min_parallax_deg;
-            const double max_triangulation_p90 =
-                parameters.feature.frontend_mode == 1
-                    ? parameters.initializer.orb_max_triangulation_p90
-                    : parameters.initializer.max_triangulation_p90;
             const bool quality_ok =
                 static_cast<int32_t>(state->map_points.size()) >=
                     parameters.initializer.min_tracks &&
-                parallax_deg >= min_parallax_deg &&
-                stats0.p90 <= max_triangulation_p90 &&
-                stats1.p90 <= max_triangulation_p90;
+                parallax_deg >= parameters.initializer.min_parallax_deg &&
+                stats0.p90 <= parameters.initializer.max_triangulation_p90 &&
+                stats1.p90 <= parameters.initializer.max_triangulation_p90;
             if (debug_geometry) {
                 std::cout << "triangulation_debug input="
                           << selection.points0.size()

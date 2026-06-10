@@ -1,22 +1,13 @@
 {
   "mapping": {
-    "min_tracked_map_points": 110,
     "target_tracked_map_points": 200,
     "max_refresh_candidates": 700,
-    "min_refresh_map_points": 100,
-    "orb_min_refresh_map_points": 24,
-    "aggressive_target_tracked_map_points": 300,
-    "aggressive_max_refresh_candidates": 1000,
-    "aggressive_min_refresh_map_points": 120,
     "max_active_age": 60,
     "max_unseen_frames": 2,
     "min_pnp_track_length": 2,
     "candidate_min_track_length": 3,
     "max_point_reprojection_error": 4.0,
     "min_refresh_parallax_deg": 0.2,
-    "max_triangulation_p90": 3.0,
-    "orb_max_triangulation_p90": 6.0,
-    "aggressive_translation": 1.5,
-    "aggressive_rotation_deg": 3.0
+    "max_triangulation_p90": 3.0
   }
 }

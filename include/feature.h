@@ -33,17 +33,5 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
                   const std::string& tag,
                   bool wide_search,
                   std::vector<cv::Mat>* tracked_descriptors = nullptr);
-bool match_orb_map_points(const cv::Mat& image,
-                          const std::vector<cv::Point2f>& prev_points,
-                          const std::vector<MapPoint>& map_points,
-                          const Pose& predicted_pose,
-                          const CameraIntrinsics& camera,
-                          const FeatureParameters& parameters,
-                          bool debug_geometry,
-                          const std::string& tag,
-                          std::vector<cv::Point2f>* tracked_prev,
-                          std::vector<cv::Point2f>* tracked_next,
-                          std::vector<int32_t>* tracked_indices,
-                          std::vector<cv::Mat>* tracked_descriptors);
 
 }  // namespace mvo
