@@ -21,9 +21,11 @@ namespace {
 
 bool should_use_for_pnp(const MapPoint& point,
                         int32_t frame_id,
-                        const MappingParameters& parameters) {
+                        const MappingParameters& parameters,
+                        bool allow_candidate) {
     const int32_t unseen_frames = frame_id - point.last_seen_frame;
     return point.has_position &&
+           (allow_candidate || !point.candidate) &&
            unseen_frames <= parameters.max_unseen_frames &&
            point.track_length >= parameters.min_pnp_track_length &&
            point.last_reprojection_error <=
@@ -201,19 +203,51 @@ int32_t run_app(AppConfig config) {
                     }
                     std::vector<cv::Point3f> pnp_map_points;
                     std::vector<cv::Point2f> pnp_image_points;
+                    std::vector<cv::Point3f> fallback_pnp_map_points;
+                    std::vector<cv::Point2f> fallback_pnp_image_points;
                     for (int32_t i = 0;
                          i < static_cast<int32_t>(next_map_points.size());
                          ++i) {
                         const bool use_for_pnp = should_use_for_pnp(
                             next_map_points[static_cast<std::size_t>(i)],
-                            frame_id, config.parameters.mapping);
+                            frame_id, config.parameters.mapping, false);
                         if (use_for_pnp) {
                             pnp_map_points.push_back(
                                 next_map_points[static_cast<std::size_t>(i)]
                                     .position);
                             pnp_image_points.push_back(
                                 tracked_next[static_cast<std::size_t>(i)]);
+                        } else if (should_use_for_pnp(
+                                       next_map_points[static_cast<std::size_t>(
+                                           i)],
+                                       frame_id, config.parameters.mapping,
+                                       true)) {
+                            fallback_pnp_map_points.push_back(
+                                next_map_points[static_cast<std::size_t>(i)]
+                                    .position);
+                            fallback_pnp_image_points.push_back(
+                                tracked_next[static_cast<std::size_t>(i)]);
                         }
+                    }
+                    const int32_t stable_pnp_candidates =
+                        static_cast<int32_t>(pnp_image_points.size());
+                    if (stable_pnp_candidates <
+                        config.parameters.pnp.min_tracks) {
+                        pnp_map_points.insert(pnp_map_points.end(),
+                                              fallback_pnp_map_points.begin(),
+                                              fallback_pnp_map_points.end());
+                        pnp_image_points.insert(
+                            pnp_image_points.end(),
+                            fallback_pnp_image_points.begin(),
+                            fallback_pnp_image_points.end());
+                    }
+                    if (config.debug_geometry) {
+                        std::cout << "pnp_candidate_pool frame=" << frame_id
+                                  << " stable=" << stable_pnp_candidates
+                                  << " fallback="
+                                  << fallback_pnp_image_points.size()
+                                  << " total=" << pnp_image_points.size()
+                                  << std::endl;
                     }
                     if (static_cast<int32_t>(pnp_image_points.size()) >=
                         config.parameters.pnp.min_tracks) {
