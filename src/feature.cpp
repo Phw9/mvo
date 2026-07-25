@@ -2,6 +2,7 @@
 
 #include "feature2d/features.h"
 #include "feature2d/klt.h"
+#include "image/image.h"
 
 #include <algorithm>
 #include <cmath>
@@ -26,10 +27,11 @@ cv::Mat to_grayscale(const cv::Mat& image) {
     return gray;
 }
 
-cvlib::feature2d::FeatureImageView make_cvlib_feature_image_view(
+cvlib::image::ImageView make_cvlib_feature_image_view(
     const cv::Mat& image,
     std::vector<cvlib::float64_t>* pixels) {
-    cvlib::feature2d::FeatureImageView view;
+    cvlib::image::ImageView view;
+    view.type = cvlib::k64FC1;
     pixels->clear();
     if (!image.empty()) {
         cv::Mat gray64;
@@ -44,9 +46,10 @@ cvlib::feature2d::FeatureImageView make_cvlib_feature_image_view(
     return view;
 }
 
-cvlib::feature2d::FeatureMaskView make_cvlib_feature_mask_view(
+cvlib::image::ImageView make_cvlib_feature_mask_view(
     const cv::Mat& mask) {
-    cvlib::feature2d::FeatureMaskView view;
+    cvlib::image::ImageView view;
+    view.type = cvlib::k8UC1;
     if (!mask.empty()) {
         view.data = mask.ptr<uint8_t>(0);
         view.rows = mask.rows;
@@ -68,10 +71,10 @@ bool detect_good_features_with_cvlib(const cv::Mat& image,
     }
     if (points != nullptr && max_points > 0 && !image.empty()) {
         std::vector<cvlib::float64_t> image_pixels;
-        const cvlib::feature2d::FeatureImageView image_view =
+        const cvlib::image::ImageView image_view =
             make_cvlib_feature_image_view(image, &image_pixels);
-        cvlib::feature2d::FeatureMaskView mask_view;
-        const cvlib::feature2d::FeatureMaskView* mask_view_ptr = nullptr;
+        cvlib::image::ImageView mask_view;
+        const cvlib::image::ImageView* mask_view_ptr = nullptr;
         if (mask != nullptr && !mask->empty()) {
             mask_view = make_cvlib_feature_mask_view(*mask);
             mask_view_ptr = &mask_view;
@@ -109,10 +112,11 @@ void make_existing_mask(const cv::Mat& image,
     }
 }
 
-cvlib::feature2d::KltImageViewF32 make_cvlib_klt_image_view(
+cvlib::image::ImageView make_cvlib_klt_image_view(
     const cv::Mat& image,
     std::vector<cvlib::float32_t>* pixels) {
-    cvlib::feature2d::KltImageViewF32 view;
+    cvlib::image::ImageView view;
+    view.type = cvlib::k32FC1;
     pixels->clear();
     if (!image.empty()) {
         cv::Mat gray32;
@@ -143,8 +147,8 @@ cvlib::feature2d::KltParameters make_cvlib_klt_parameters(
 }
 
 cvlib::ErrorCode track_points_with_cvlib_klt(
-    const cvlib::feature2d::KltImageViewF32& prev_view,
-    const cvlib::feature2d::KltImageViewF32& next_view,
+    const cvlib::image::ImageView& prev_view,
+    const cvlib::image::ImageView& next_view,
     const std::vector<cv::Point2f>& prev_points,
     const cvlib::feature2d::KltParameters& klt_parameters,
     std::vector<cv::Point2f>* next_points,
@@ -153,30 +157,36 @@ cvlib::ErrorCode track_points_with_cvlib_klt(
     next_points->clear();
     status->clear();
     if (!prev_points.empty()) {
-        std::vector<cvlib::feature2d::KltPoint> input_points(
-            prev_points.size());
-        std::vector<cvlib::feature2d::KltPoint> output_points(
-            prev_points.size());
+        const int32_t point_count =
+            static_cast<int32_t>(prev_points.size());
+        cvlib::Matrix input_points = cvlib::matrix_create(point_count, 2);
+        cvlib::Matrix output_points = cvlib::matrix_create(point_count, 2);
         std::vector<cvlib::float64_t> errors(prev_points.size());
         status->resize(prev_points.size(), 0U);
-        for (std::size_t i = 0; i < prev_points.size(); ++i) {
-            input_points[i].x = static_cast<double>(prev_points[i].x);
-            input_points[i].y = static_cast<double>(prev_points[i].y);
-        }
-        ec = cvlib::feature2d::klt_track_f32(
-            &prev_view, &next_view, input_points.data(),
-            static_cast<int32_t>(input_points.size()), &klt_parameters,
-            output_points.data(), status->data(), errors.data());
-        if (ec == cvlib::ErrorCode::kSuccess) {
-            next_points->resize(output_points.size());
-            for (std::size_t i = 0; i < output_points.size(); ++i) {
-                (*next_points)[i] = cv::Point2f(
-                    static_cast<float>(output_points[i].x),
-                    static_cast<float>(output_points[i].y));
+        if (input_points.data != nullptr && output_points.data != nullptr) {
+            for (int32_t i = 0; i < point_count; ++i) {
+                input_points(i, 0) = static_cast<double>(prev_points[i].x);
+                input_points(i, 1) = static_cast<double>(prev_points[i].y);
+            }
+            ec = cvlib::feature2d::klt_track(
+                &prev_view, &next_view, &input_points, &klt_parameters,
+                &output_points, status->data(), errors.data());
+            if (ec == cvlib::ErrorCode::kSuccess) {
+                next_points->resize(prev_points.size());
+                for (int32_t i = 0; i < point_count; ++i) {
+                    (*next_points)[i] = cv::Point2f(
+                        static_cast<float>(output_points(i, 0)),
+                        static_cast<float>(output_points(i, 1)));
+                }
+            } else {
+                status->clear();
             }
         } else {
+            ec = cvlib::ErrorCode::kNullPointer;
             status->clear();
         }
+        cvlib::matrix_destroy(&input_points);
+        cvlib::matrix_destroy(&output_points);
     }
     return ec;
 }
@@ -263,9 +273,9 @@ void run_klt_pass(const cv::Mat& prev_image,
 
     std::vector<cvlib::float32_t> prev_pixels;
     std::vector<cvlib::float32_t> next_pixels;
-    const cvlib::feature2d::KltImageViewF32 prev_view =
+    const cvlib::image::ImageView prev_view =
         make_cvlib_klt_image_view(prev_image, &prev_pixels);
-    const cvlib::feature2d::KltImageViewF32 next_view =
+    const cvlib::image::ImageView next_view =
         make_cvlib_klt_image_view(image, &next_pixels);
     const cvlib::feature2d::KltParameters klt_parameters =
         make_cvlib_klt_parameters(parameters, window_size, pyramid_levels);

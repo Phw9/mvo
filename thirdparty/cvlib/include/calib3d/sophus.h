@@ -69,6 +69,27 @@ Identity J_r(xi) = J_l(-xi) is used internally.
 ErrorCode right_jac_se3(const Vector* xi, Matrix* result);
 
 /*
+Computes the left-trivialized Jacobian J_l(phi) for SO(3). Use for global /
+world-frame rotation perturbation: R_new = exp(delta) * R.
+
+@param phi Input axis-angle, length 3.
+@param result Output 3-by-3 Jacobian; must be pre-allocated.
+@returns ErrorCode.
+*/
+ErrorCode left_jac_so3(const Vector* phi, Matrix* result);
+
+/*
+Computes the right-trivialized Jacobian J_r(phi) for SO(3). Use for local /
+body-frame rotation perturbation: R_new = R * exp(delta). Identity
+J_r(phi) = J_l(-phi) is used internally.
+
+@param phi Input axis-angle, length 3.
+@param result Output 3-by-3 Jacobian; must be pre-allocated.
+@returns ErrorCode.
+*/
+ErrorCode right_jac_so3(const Vector* phi, Matrix* result);
+
+/*
 Computes the SE(3) logarithm: homogeneous transform to twist [rho; phi].
 
 @param transformation Input 4-by-4 homogeneous transform.
@@ -183,6 +204,18 @@ result may alias transformation.
 */
 ErrorCode sim3_plus_right(const Matrix* transformation, const Vector* delta,
                           Matrix* result);
+
+/*
+Inverts a Sim(3) similarity transform in closed form: for
+T = [[s R, t], [0, 1]], the inverse is [[(1/s) R^T, -(1/s) R^T t], [0, 1]].
+Unlike a rigid inv_transform (which assumes s = 1), this restores the 1/s
+scale. The upper-left block determinant must be positive.
+
+@param transformation Input 4-by-4 similarity transform.
+@param result Output 4-by-4 inverse; pre-allocated, must not alias input.
+@returns ErrorCode.
+*/
+ErrorCode sim3_inverse(const Matrix* transformation, Matrix* result);
 
 /*
 Interpolates two SO(3) rotations with geodesic interpolation.

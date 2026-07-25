@@ -16,6 +16,57 @@ namespace cvlib {
 using float64_t = double;
 using float32_t = float;
 
+// Element depth tags (k8U == 0 so a zero-initialized tag is 8-bit
+// unsigned). A full buffer type combines a depth with a channel count
+// via mat_type().
+static constexpr int32_t k8U  = 0;
+static constexpr int32_t k8S  = 1;
+static constexpr int32_t k16U = 2;
+static constexpr int32_t k16S = 3;
+static constexpr int32_t k32S = 4;
+static constexpr int32_t k32F = 5;
+static constexpr int32_t k64F = 6;
+
+static constexpr int32_t kDepthShift = 3;   // channels occupy bits >= 3
+static constexpr int32_t kDepthMask  = 0x7;
+
+// Combines a depth tag and channel count (1..) into a buffer type:
+// type = depth | ((channels - 1) << 3).
+inline int32_t mat_type(int32_t depth, int32_t channels) {
+    return (depth & kDepthMask) | ((channels - 1) << kDepthShift);
+}
+// Extracts the depth tag from a buffer type.
+inline int32_t mat_depth(int32_t type) { return type & kDepthMask; }
+// Extracts the channel count from a buffer type.
+inline int32_t mat_channels(int32_t type) {
+    return (type >> kDepthShift) + 1;
+}
+// Bytes per single element of the depth (not per pixel): 8U->1, 16->2,
+// 32->4, 64F->8; 0 for an unknown depth.
+inline int32_t mat_depth_bytes(int32_t type) {
+    int32_t bytes = 0;
+    switch (mat_depth(type)) {
+        case k8U:
+        case k8S:  bytes = 1; break;
+        case k16U:
+        case k16S: bytes = 2; break;
+        case k32S:
+        case k32F: bytes = 4; break;
+        case k64F: bytes = 8; break;
+        default:   bytes = 0; break;
+    }
+    return bytes;
+}
+
+// Single-channel buffer type constants.
+static constexpr int32_t k8UC1  = k8U;
+static constexpr int32_t k8SC1  = k8S;
+static constexpr int32_t k16UC1 = k16U;
+static constexpr int32_t k16SC1 = k16S;
+static constexpr int32_t k32SC1 = k32S;
+static constexpr int32_t k32FC1 = k32F;
+static constexpr int32_t k64FC1 = k64F;
+
 struct Matrix;
 
 // Non-owning read-only view of a rectangular sub-block of a Matrix.
@@ -91,23 +142,43 @@ struct MatrixBlock {
 // the free functions they mirror. Member functions keep the struct an
 // aggregate: brace initialization and the C-style API are unchanged.
 struct Matrix {
-    float64_t* data;
+    // Untyped buffer so a matrix can hold any depth (see the type tag).
+    // The element accessors below are the f64 fast path and require the
+    // matrix to be k64FC1 -- every numeric matrix is. Other depths use
+    // ptr<T>() with a T matching the buffer depth.
+    void* data;
     int32_t rows;
     int32_t cols;
+    // Buffer type tag and row stride (in samples). Defaulted so existing
+    // aggregate initialization -- Matrix m = {nullptr, 0, 0}; -- still
+    // compiles and yields a dense k64FC1 matrix. The f64 accessors assume
+    // dense storage (stride == cols); strided access reads ptr<T>() with
+    // the stride directly.
+    int32_t stride = 0;        // 0 means dense: treat as cols
+    int32_t type   = k64FC1;
+
+    // Typed data pointer: reinterprets the untyped buffer as T*. The
+    // caller guarantees T matches the buffer depth (T == float64_t for
+    // the k64FC1 fast path the accessors below use).
+    template <typename T> T* ptr() { return static_cast<T*>(data); }
+    template <typename T> const T* ptr() const {
+        return static_cast<const T*>(data);
+    }
 
     float64_t& operator()(int32_t r, int32_t c) {
-        return data[r * cols + c];
+        return ptr<float64_t>()[r * cols + c];
     }
     float64_t operator()(int32_t r, int32_t c) const {
-        return data[r * cols + c];
+        return ptr<float64_t>()[r * cols + c];
     }
 
     // Writes v into every element without reallocating; unchecked like
-    // operator() (the caller guarantees data is non-null).
+    // operator() (the caller guarantees data is non-null and k64FC1).
     void fill(float64_t v) {
+        float64_t* p = ptr<float64_t>();
         const int32_t n = rows * cols;
         for (int32_t i = 0; i < n; ++i) {
-            data[i] = v;
+            p[i] = v;
         }
     }
     void set_zero() { fill(0.0); }
@@ -115,9 +186,10 @@ struct Matrix {
     // are supported: the min(rows, cols) leading diagonal entries get 1.
     void set_identity() {
         set_zero();
+        float64_t* p = ptr<float64_t>();
         const int32_t k = (rows < cols) ? rows : cols;
         for (int32_t i = 0; i < k; ++i) {
-            data[i * cols + i] = 1.0;
+            p[i * cols + i] = 1.0;
         }
     }
     // m = v fills every element with v; the implicit Matrix-to-Matrix
@@ -131,11 +203,11 @@ struct Matrix {
     // for the unchecked contract.
     MatrixBlock block(int32_t r0, int32_t c0, int32_t block_rows,
                       int32_t block_cols) {
-        return MatrixBlock{data, cols, r0, c0, block_rows, block_cols};
+        return MatrixBlock{ptr<float64_t>(), cols, r0, c0, block_rows, block_cols};
     }
     ConstMatrixBlock block(int32_t r0, int32_t c0, int32_t block_rows,
                            int32_t block_cols) const {
-        return ConstMatrixBlock{data, cols, r0, c0, block_rows,
+        return ConstMatrixBlock{ptr<float64_t>(), cols, r0, c0, block_rows,
                                 block_cols};
     }
 
@@ -154,9 +226,11 @@ struct Matrix {
     // same shape (unchecked); the shallow Matrix-to-Matrix assignment
     // stays untouched.
     void copy_from(const Matrix& src) {
+        float64_t* dst = ptr<float64_t>();
+        const float64_t* s = src.ptr<float64_t>();
         const int32_t n = rows * cols;
         for (int32_t i = 0; i < n; ++i) {
-            data[i] = src.data[i];
+            dst[i] = s[i];
         }
     }
 };
@@ -305,12 +379,13 @@ inline ErrorCode matrix_create_checked(int32_t rows, int32_t cols,
         out->data = nullptr;
         out->rows = rows;
         out->cols = cols;
+        out->stride = cols;
+        out->type = k64FC1;
         std::size_t count = 0U;
         ec = checked_matrix_element_count(rows, cols, sizeof(float64_t),
                                           &count);
         if (ec == ErrorCode::kSuccess) {
-            out->data = static_cast<float64_t*>(
-                std::calloc(count, sizeof(float64_t)));
+            out->data = std::calloc(count, sizeof(float64_t));
             if (out->data == nullptr) {
                 ec = ErrorCode::kNullPointer;
             }
@@ -336,12 +411,115 @@ inline void matrix_destroy(Matrix* m) {
 
 // Returns element at (r, c) without bounds checking.
 inline float64_t matrix_get(const Matrix* m, int32_t r, int32_t c) {
-    return m->data[r * m->cols + c];
+    return m->ptr<float64_t>()[r * m->cols + c];
 }
 
 // Writes v into element (r, c) without bounds checking.
 inline void matrix_set(Matrix* m, int32_t r, int32_t c, float64_t v) {
-    m->data[r * m->cols + c] = v;
+    m->ptr<float64_t>()[r * m->cols + c] = v;
+}
+
+// Row stride in samples: the stored stride, or the dense default
+// (cols * channels) when stride is 0.
+inline int32_t mat_stride(const Matrix* m) {
+    const int32_t cn = mat_channels(m->type);
+    return (m->stride != 0) ? m->stride : m->cols * cn;
+}
+
+// Typed element access honoring stride and channels; T must match the
+// buffer depth. ch selects the channel (0 for single-channel matrices).
+// The index is computed in 64 bits so multi-channel buffers do not
+// overflow the sample offset.
+template <typename T>
+inline T& mat_at(Matrix* m, int32_t r, int32_t c, int32_t ch = 0) {
+    const std::int64_t cn = mat_channels(m->type);
+    const std::int64_t stride = mat_stride(m);
+    return m->ptr<T>()[static_cast<std::int64_t>(r) * stride +
+                       static_cast<std::int64_t>(c) * cn + ch];
+}
+template <typename T>
+inline const T& mat_at(const Matrix* m, int32_t r, int32_t c,
+                       int32_t ch = 0) {
+    const std::int64_t cn = mat_channels(m->type);
+    const std::int64_t stride = mat_stride(m);
+    return m->ptr<T>()[static_cast<std::int64_t>(r) * stride +
+                       static_cast<std::int64_t>(c) * cn + ch];
+}
+
+/*
+Allocates a zero-filled row-major matrix of a given buffer type.
+
+@param rows Matrix row count.
+@param cols Matrix column count.
+@param type Buffer type (mat_type(depth, channels)).
+@param out Output matrix (dense: stride == cols * channels).
+@returns ErrorCode.
+*/
+
+inline ErrorCode matrix_create_typed_checked(int32_t rows, int32_t cols,
+                                             int32_t type, Matrix* out) {
+    ErrorCode ec = ErrorCode::kSuccess;
+    if (out == nullptr) {
+        ec = ErrorCode::kNullPointer;
+    } else {
+        const int32_t cn = mat_channels(type);
+        const int32_t bytes = mat_depth_bytes(type);
+        out->data = nullptr;
+        out->rows = rows;
+        out->cols = cols;
+        out->stride = cols * cn;
+        out->type = type;
+        if (bytes == 0 || cn < 1) {
+            ec = ErrorCode::kInvalidArgument;
+        } else {
+            const std::size_t elem = static_cast<std::size_t>(bytes) *
+                                     static_cast<std::size_t>(cn);
+            std::size_t count = 0U;
+            ec = checked_matrix_element_count(rows, cols, elem, &count);
+            if (ec == ErrorCode::kSuccess) {
+                out->data = std::calloc(count, elem);
+                if (out->data == nullptr) {
+                    ec = ErrorCode::kNullPointer;
+                }
+            }
+        }
+    }
+    return ec;
+}
+
+// Allocates a zero-filled typed matrix on the heap.
+inline Matrix matrix_create_typed(int32_t rows, int32_t cols, int32_t type) {
+    Matrix m;
+    (void)matrix_create_typed_checked(rows, cols, type, &m);
+    return m;
+}
+
+// Non-owning read-only view of a strided, typed buffer (the borrow
+// counterpart of Matrix; see matrix_view). The parent buffer must
+// outlive the view.
+struct MatrixView {
+    const void* data;
+    int32_t rows;
+    int32_t cols;
+    int32_t stride;   // samples per row
+    int32_t type;
+
+    template <typename T> const T* ptr() const {
+        return static_cast<const T*>(data);
+    }
+};
+
+// Borrows a matrix as a read-only view (dense stride resolved).
+inline MatrixView matrix_view(const Matrix* m) {
+    return MatrixView{m->data, m->rows, m->cols, mat_stride(m), m->type};
+}
+
+// Typed element access on a view; T must match the buffer depth.
+template <typename T>
+inline const T& mat_at(const MatrixView* v, int32_t r, int32_t c,
+                       int32_t ch = 0) {
+    const int32_t cn = mat_channels(v->type);
+    return v->ptr<T>()[r * v->stride + c * cn + ch];
 }
 
 /*
@@ -355,20 +533,30 @@ Copies a matrix into a checked heap allocation.
 inline ErrorCode matrix_copy_checked(const Matrix* src, Matrix* dst) {
     ErrorCode ec = ErrorCode::kSuccess;
     std::size_t count = 0U;
-    if (dst == nullptr || src == nullptr || src->data == nullptr) {
-        ec = ErrorCode::kNullPointer;
+    // Deep copy preserves the source buffer type; the element size is the
+    // per-sample depth times the channel count so a typed (non-k64FC1)
+    // matrix is not read past its buffer.
+    const std::size_t elem =
+        (src != nullptr)
+            ? static_cast<std::size_t>(mat_depth_bytes(src->type)) *
+                  static_cast<std::size_t>(mat_channels(src->type))
+            : 0U;
+    if (dst == nullptr || src == nullptr || src->data == nullptr ||
+        elem == 0U) {
+        ec = (dst == nullptr || src == nullptr || src->data == nullptr)
+                 ? ErrorCode::kNullPointer
+                 : ErrorCode::kInvalidArgument;
     } else {
         dst->data = nullptr;
-        dst->rows = src->rows;
-        dst->cols = src->cols;
-        ec = checked_matrix_element_count(src->rows, src->cols,
-                                          sizeof(float64_t), &count);
+        ec = checked_matrix_element_count(src->rows, src->cols, elem,
+                                          &count);
     }
     if (ec == ErrorCode::kSuccess) {
-        ec = matrix_create_checked(src->rows, src->cols, dst);
+        ec = matrix_create_typed_checked(src->rows, src->cols, src->type,
+                                         dst);
     }
     if (ec == ErrorCode::kSuccess) {
-        std::memcpy(dst->data, src->data, count * sizeof(float64_t));
+        std::memcpy(dst->data, src->data, count * elem);
     }
     return ec;
 }
@@ -642,6 +830,10 @@ inline ErrorCode cmatrix_from_matrix_checked(const Matrix* src,
     std::size_t count = 0U;
     if (dst == nullptr || src == nullptr || src->data == nullptr) {
         ec = ErrorCode::kNullPointer;
+    } else if (src->type != k64FC1) {
+        // Real-to-complex promotion reads the source as f64; a typed
+        // (image) buffer is not a valid numeric input.
+        ec = ErrorCode::kInvalidArgument;
     } else {
         dst->data = nullptr;
         dst->rows = src->rows;
@@ -653,8 +845,9 @@ inline ErrorCode cmatrix_from_matrix_checked(const Matrix* src,
         ec = cmatrix_create_checked(src->rows, src->cols, dst);
     }
     if (ec == ErrorCode::kSuccess) {
+        const float64_t* s = src->ptr<float64_t>();
         for (std::size_t i = 0U; i < count; ++i) {
-            dst->data[i] = complex_make(src->data[i], 0.0);
+            dst->data[i] = complex_make(s[i], 0.0);
         }
     }
     return ec;

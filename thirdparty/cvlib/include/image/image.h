@@ -12,31 +12,28 @@
 namespace cvlib {
 namespace image {
 
-// Pixel formats. Samples are stored row-major with interleaved
-// channels; stride counts SAMPLES per row (stride >= cols * channels).
-static constexpr int32_t kFormatF64 = 0;
-static constexpr int32_t kFormatF32 = 1;
-static constexpr int32_t kFormatU8  = 2;
-
+// Images carry the shared depth+channels buffer type (see mat_type in
+// cvlib/types.h); the default is 8-bit unsigned single channel. Samples
+// are stored row-major with interleaved channels, and stride counts
+// SAMPLES per row (stride >= cols * channels). Supported depths are
+// k8U, k32F, and k64F.
 static constexpr int32_t kMaxImageChannels = 4;
 
 /*
 Non-owning, read-only image view.
 
-@param data First sample of the first pixel (format-typed storage).
+@param data First sample of the first pixel (depth-typed storage).
 @param rows Row count (> 0).
 @param cols Column count (> 0).
 @param stride Samples per row (>= cols * channels).
-@param channels Interleaved channel count (1..4).
-@param format kFormatF64 | kFormatF32 | kFormatU8.
+@param type Buffer type (mat_type(depth, channels)); default k8UC1.
 */
 struct ImageView {
     const void* data = nullptr;
     int32_t rows = 0;
     int32_t cols = 0;
     int32_t stride = 0;
-    int32_t channels = 0;
-    int32_t format = kFormatF64;
+    int32_t type = k8UC1;
 };
 
 /*
@@ -48,28 +45,27 @@ struct Image {
     int32_t rows = 0;
     int32_t cols = 0;
     int32_t stride = 0;
-    int32_t channels = 0;
-    int32_t format = kFormatF64;
+    int32_t type = k8UC1;
 };
 
 /*
-Returns the size of one sample of the format in bytes (0 for unknown
-formats).
+Returns the size of one sample (one channel element) of the buffer type
+in bytes (0 for unknown depths).
 */
-int32_t image_sample_bytes(int32_t format);
+int32_t image_sample_bytes(int32_t type);
 
 /*
 Allocates a zero-filled dense image.
 
 @param rows Row count (> 0).
 @param cols Column count (> 0).
-@param channels Channel count (1..4).
-@param format Pixel format.
+@param type Buffer type (mat_type(depth, channels)); depth in
+       {k8U, k32F, k64F}, channels in 1..4.
 @param out Output image; overwritten on success.
 @returns ErrorCode.
 */
-ErrorCode image_create(int32_t rows, int32_t cols, int32_t channels,
-                       int32_t format, Image* out);
+ErrorCode image_create(int32_t rows, int32_t cols, int32_t type,
+                       Image* out);
 
 /*
 Releases image storage and resets the struct; safe on empty images.
@@ -134,6 +130,28 @@ rounded for u8 storage).
 */
 ErrorCode image_set(Image* img, int32_t row, int32_t col, int32_t channel,
                     float64_t value);
+
+/*
+Copies a single-channel image view into a pre-created k64FC1 matrix,
+reading samples of any supported depth as float64. This bridges an
+image into the numeric domain (e.g. a disparity map to reproject).
+
+@param src Single-channel source view.
+@param dst Pre-created k64FC1 matrix, same rows and cols as src.
+@returns ErrorCode.
+*/
+ErrorCode image_to_matrix(const ImageView* src, Matrix* dst);
+
+/*
+Copies a k64FC1 matrix into a pre-created single-channel image,
+converting float64 values to the destination depth (u8 clamps and
+rounds). This bridges numeric results back into the image domain.
+
+@param src k64FC1 matrix.
+@param dst Pre-created single-channel image, same rows and cols as src.
+@returns ErrorCode.
+*/
+ErrorCode image_from_matrix(const Matrix* src, Image* dst);
 
 }  // namespace image
 }  // namespace cvlib

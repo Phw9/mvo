@@ -3,8 +3,9 @@
 #ifndef CVLIB_FEATURE2D_KLT_H_
 #define CVLIB_FEATURE2D_KLT_H_
 
-#include "../defs.h"
+#include "../types.h"
 #include "../error_codes.h"
+#include "../image/image.h"
 
 #include <cstdint>
 
@@ -12,52 +13,11 @@ namespace cvlib {
 namespace feature2d {
 
 /*
-Read-only grayscale image view.
-
-@param data Row-major grayscale samples.
-@param rows Image row count.
-@param cols Image column count.
-@param stride Elements between consecutive rows.
-*/
-struct KltImageView {
-    const float64_t* data = nullptr;
-    int32_t rows = 0;
-    int32_t cols = 0;
-    int32_t stride = 0;
-};
-
-/*
-Read-only float32 grayscale image view.
-
-@param data Row-major grayscale samples.
-@param rows Image row count.
-@param cols Image column count.
-@param stride Elements between consecutive rows.
-*/
-struct KltImageViewF32 {
-    const float32_t* data = nullptr;
-    int32_t rows = 0;
-    int32_t cols = 0;
-    int32_t stride = 0;
-};
-
-/*
-Two-dimensional feature point.
-
-@param x Horizontal pixel coordinate.
-@param y Vertical pixel coordinate.
-*/
-struct KltPoint {
-    float64_t x = 0.0;
-    float64_t y = 0.0;
-};
-
-/*
 KLT tracker parameters.
 
 @param window_width Tracking window width in pixels.
 @param window_height Tracking window height in pixels.
-@param max_level Pyramid level hint for API compatibility.
+@param max_level Pyramid level count hint.
 @param max_iterations Maximum Gauss-Newton iterations.
 @param epsilon Convergence threshold in pixels.
 @param min_eig_threshold Minimum structure-tensor eigenvalue.
@@ -76,55 +36,33 @@ struct KltParameters {
 };
 
 /*
-Returns OpenCV-compatible default tracker parameters.
+Returns default tracker parameters.
 
 @returns KltParameters.
 */
 KltParameters klt_default_parameters();
 
 /*
-Tracks points from prev_image into next_image.
+Tracks points from prev_image into next_image. The two images must be
+single-channel and share the same element depth (k64FC1 or k32FC1); the
+tracker runs its f64 or f32 path accordingly.
 
-@param prev_image Previous grayscale image.
-@param next_image Current grayscale image.
-@param prev_points Input points in prev_image.
-@param point_count Number of points to track.
+@param prev_image Previous grayscale image (k64FC1 or k32FC1).
+@param next_image Current grayscale image, same type and shape.
+@param prev_points Input points, N-by-2 (k64FC1).
 @param parameters Tracker parameters.
-@param next_points Output points in next_image.
-@param status Output track status values, 1 for success.
-@param errors Optional output mean absolute patch errors.
+@param next_points Output points, N-by-2 (k64FC1); pre-created.
+@param status Output track status values, length N, 1 for success.
+@param errors Optional output mean absolute patch errors, length N.
 @returns ErrorCode.
 */
-ErrorCode klt_track(const KltImageView* prev_image,
-                    const KltImageView* next_image,
-                    const KltPoint* prev_points,
-                    int32_t point_count,
+ErrorCode klt_track(const image::ImageView* prev_image,
+                    const image::ImageView* next_image,
+                    const Matrix* prev_points,
                     const KltParameters* parameters,
-                    KltPoint* next_points,
+                    Matrix* next_points,
                     uint8_t* status,
                     float64_t* errors = nullptr);
-
-/*
-Tracks points from float32 prev_image into float32 next_image.
-
-@param prev_image Previous grayscale image.
-@param next_image Current grayscale image.
-@param prev_points Input points in prev_image.
-@param point_count Number of points to track.
-@param parameters Tracker parameters.
-@param next_points Output points in next_image.
-@param status Output track status values, 1 for success.
-@param errors Optional output mean absolute patch errors.
-@returns ErrorCode.
-*/
-ErrorCode klt_track_f32(const KltImageViewF32* prev_image,
-                        const KltImageViewF32* next_image,
-                        const KltPoint* prev_points,
-                        int32_t point_count,
-                        const KltParameters* parameters,
-                        KltPoint* next_points,
-                        uint8_t* status,
-                        float64_t* errors = nullptr);
 
 }  // namespace feature2d
 }  // namespace cvlib

@@ -46,6 +46,18 @@ Computes C = A B^T with B stored as n-by-k (B^T is k-by-n).
 ErrorCode matmul_nt(const Matrix* a, const Matrix* b, Matrix* result);
 
 /*
+Computes C = A^T B with A stored as k-by-m (A^T is m-by-k).
+
+@param a Left factor before transpose, k-by-m.
+@param b Right factor, k-by-n.
+@param result Output, m-by-n; must be pre-allocated.
+@returns ErrorCode.
+
+*/
+
+ErrorCode matmul_tn(const Matrix* a, const Matrix* b, Matrix* result);
+
+/*
 Computes the Euclidean norm of a vector.
 
 @param v Input vector.

@@ -22,7 +22,7 @@ not duplicated).
 @param src Source view, single channel, any format.
 @param kernel_x Horizontal kernel, odd length >= 1.
 @param kernel_y Vertical kernel, odd length >= 1.
-@param dst Output image, same rows/cols, single channel, kFormatF64.
+@param dst Output image, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode separable_filter(const ImageView* src, const Vector* kernel_x,
@@ -33,7 +33,7 @@ Box blur: separable uniform average over an odd window.
 
 @param src Source view, single channel.
 @param window Odd window size >= 1.
-@param dst Output image, same rows/cols, single channel, kFormatF64.
+@param dst Output image, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode box_blur(const ImageView* src, int32_t window, Image* dst);
@@ -44,7 +44,7 @@ detectors, so smoothing here and inside ORB/SIFT stay identical.
 
 @param src Source view, single channel.
 @param sigma Gaussian sigma (> 0).
-@param dst Output image, same rows/cols, single channel, kFormatF64.
+@param dst Output image, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode gaussian_blur(const ImageView* src, float64_t sigma, Image* dst);
@@ -55,8 +55,8 @@ First-order image gradients with the unnormalized 3x3 Sobel kernels
 separable_filter with reflected borders.
 
 @param src Source view, single channel.
-@param grad_x Output horizontal gradient, kFormatF64; pre-created.
-@param grad_y Output vertical gradient, kFormatF64; pre-created.
+@param grad_x Output horizontal gradient, k64FC1; pre-created.
+@param grad_y Output vertical gradient, k64FC1; pre-created.
 @returns ErrorCode.
 */
 ErrorCode sobel(const ImageView* src, Image* grad_x, Image* grad_y);
@@ -66,8 +66,8 @@ First-order image gradients with the 3x3 Scharr kernels shared with the
 KLT tracker (including its 1/32 normalization).
 
 @param src Source view, single channel.
-@param grad_x Output horizontal gradient, kFormatF64; pre-created.
-@param grad_y Output vertical gradient, kFormatF64; pre-created.
+@param grad_x Output horizontal gradient, k64FC1; pre-created.
+@param grad_y Output vertical gradient, k64FC1; pre-created.
 @returns ErrorCode.
 */
 ErrorCode scharr(const ImageView* src, Image* grad_x, Image* grad_y);
@@ -79,7 +79,7 @@ sum is four lookups.
 
 @param src Source view, single channel.
 @param dst Output image, (rows+1) x (cols+1), single channel,
-       kFormatF64.
+       k64FC1.
 @returns ErrorCode.
 */
 ErrorCode integral_image(const ImageView* src, Image* dst);
@@ -112,7 +112,7 @@ Fixed-level thresholding.
 @param thresh Threshold level.
 @param max_value Output level for the binary modes.
 @param mode One of the kThreshold* constants.
-@param dst Output image, same rows/cols, single channel, kFormatF64.
+@param dst Output image, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode threshold(const ImageView* src, float64_t thresh,
@@ -123,7 +123,7 @@ Bilinear resize: the output size is taken from dst; sample positions
 map pixel centers proportionally, clamping at the borders.
 
 @param src Source view, single channel.
-@param dst Output image, any positive size, single channel, kFormatF64.
+@param dst Output image, any positive size, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode resize(const ImageView* src, Image* dst);
@@ -135,7 +135,7 @@ Generic remap: dst(r, c) samples src bilinearly at
 @param src Source view, single channel.
 @param map_x Source x-coordinates per output pixel, dst-rows x dst-cols.
 @param map_y Source y-coordinates per output pixel, same shape.
-@param dst Output image, single channel, kFormatF64.
+@param dst Output image, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode remap(const ImageView* src, const Matrix* map_x,
@@ -148,7 +148,7 @@ source bilinearly; destination pixels mapping outside are 0.
 
 @param src Source view, single channel.
 @param m Affine transform, 2-by-3 (invertible linear part).
-@param dst Output image, single channel, kFormatF64.
+@param dst Output image, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode warp_affine(const ImageView* src, const Matrix* m, Image* dst);
@@ -161,7 +161,7 @@ are 0.
 
 @param src Source view, single channel.
 @param h Homography, 3-by-3 (invertible).
-@param dst Output image, single channel, kFormatF64.
+@param dst Output image, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode warp_perspective(const ImageView* src, const Matrix* h,
@@ -173,7 +173,7 @@ borders.
 
 @param src Source view, single channel.
 @param window Odd window size >= 1.
-@param dst Output image, same rows/cols, single channel, kFormatF64.
+@param dst Output image, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode erode(const ImageView* src, int32_t window, Image* dst);
@@ -184,7 +184,7 @@ borders.
 
 @param src Source view, single channel.
 @param window Odd window size >= 1.
-@param dst Output image, same rows/cols, single channel, kFormatF64.
+@param dst Output image, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode dilate(const ImageView* src, int32_t window, Image* dst);
@@ -213,7 +213,7 @@ not smoothed; blur beforehand for noisy images.
 @param low_threshold Weak-edge magnitude threshold (>= 0).
 @param high_threshold Strong-edge magnitude threshold
        (>= low_threshold).
-@param dst Output edge map, same rows/cols, single channel, kFormatF64.
+@param dst Output edge map, same rows/cols, single channel, k64FC1.
 @returns ErrorCode.
 */
 ErrorCode canny(const ImageView* src, float64_t low_threshold,

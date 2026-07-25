@@ -6,6 +6,7 @@
 #include "../error_codes.h"
 #include "../types.h"
 #include "../defs.h"
+#include "../image/image.h"
 
 #include <cstdint>
 #include <vector>
@@ -16,35 +17,8 @@ namespace feature2d {
 static constexpr int32_t kOrbDescriptorBytes = 32;
 static constexpr int32_t kSiftDescriptorSize = 128;
 
-/*
-Read-only grayscale image view.
-
-@param data Row-major grayscale samples.
-@param rows Image row count.
-@param cols Image column count.
-@param stride Elements between consecutive rows.
-*/
-struct FeatureImageView {
-    const float64_t* data = nullptr;
-    int32_t rows = 0;
-    int32_t cols = 0;
-    int32_t stride = 0;
-};
-
-/*
-Optional read-only feature mask view.
-
-@param data Row-major mask samples, nonzero entries are enabled.
-@param rows Mask row count.
-@param cols Mask column count.
-@param stride Elements between consecutive rows.
-*/
-struct FeatureMaskView {
-    const uint8_t* data = nullptr;
-    int32_t rows = 0;
-    int32_t cols = 0;
-    int32_t stride = 0;
-};
+// Detectors take a single-channel k64FC1 grayscale image::ImageView and
+// an optional single-channel k8UC1 mask (nonzero enables a pixel).
 
 /*
 Two-dimensional feature keypoint.
@@ -198,8 +172,8 @@ Detects segment-test corners.
 @param keypoints Output corners ordered by row-major position.
 @returns ErrorCode.
 */
-ErrorCode fast_detect(const FeatureImageView* image,
-                      const FeatureMaskView* mask,
+ErrorCode fast_detect(const image::ImageView* image,
+                      const image::ImageView* mask,
                       const FastParameters* parameters,
                       std::vector<Keypoint>* keypoints);
 
@@ -217,7 +191,7 @@ the image keep their input position.
 @param epsilon Convergence threshold in pixels (> 0).
 @returns ErrorCode.
 */
-ErrorCode refine_corners_subpixel(const FeatureImageView* image,
+ErrorCode refine_corners_subpixel(const image::ImageView* image,
                                   Matrix* corners, int32_t window,
                                   int32_t max_iterations,
                                   float64_t epsilon);
@@ -232,10 +206,33 @@ Finds strong image corners using OpenCV-compatible goodFeaturesToTrack logic.
 @returns ErrorCode.
 */
 ErrorCode good_features_to_track(
-    const FeatureImageView* image,
-    const FeatureMaskView* mask,
+    const image::ImageView* image,
+    const image::ImageView* mask,
     const GoodFeaturesToTrackParameters* parameters,
     std::vector<Keypoint>* keypoints);
+
+/*
+Selects a spatially even subset of keypoints, keeping the strongest in
+each region so the survivors cover the frame instead of clustering where
+responses happen to be dense.
+
+A covering grid (an inline spatial hash of occupied cells) is laid at a
+suppression radius; the radius is bracketed by binary search until the
+number of survivors lands within tolerance of the target. Candidates are
+visited from strongest to weakest, so the first keypoint claiming a
+region is the strongest one there.
+
+@param keypoints Candidate keypoints (>= 1); x, y, response are read.
+@param target_count Desired survivor count (1 <= target_count <= N).
+@param tolerance Allowed relative deviation of the survivor count from
+       the target, in [0, 1]; 0 demands an exact match when reachable.
+@param selected Output keypoint indices in ascending order; the count is
+       the reachable value closest to the target within tolerance.
+@returns ErrorCode.
+*/
+ErrorCode adaptive_nonmax_suppression(
+    const std::vector<Keypoint>& keypoints, int32_t target_count,
+    float64_t tolerance, std::vector<int32_t>* selected);
 
 /*
 Returns OpenCV-compatible ORB defaults.
@@ -254,8 +251,8 @@ Detects ORB keypoints and computes binary descriptors.
 @param descriptors Output row-major descriptors, N-by-32.
 @returns ErrorCode.
 */
-ErrorCode orb_detect_and_compute(const FeatureImageView* image,
-                                 const FeatureMaskView* mask,
+ErrorCode orb_detect_and_compute(const image::ImageView* image,
+                                 const image::ImageView* mask,
                                  const OrbParameters* parameters,
                                  std::vector<Keypoint>* keypoints,
                                  std::vector<uint8_t>* descriptors);
@@ -277,8 +274,8 @@ Detects SIFT keypoints and computes float descriptors.
 @param descriptors Output row-major descriptors, N-by-128.
 @returns ErrorCode.
 */
-ErrorCode sift_detect_and_compute(const FeatureImageView* image,
-                                  const FeatureMaskView* mask,
+ErrorCode sift_detect_and_compute(const image::ImageView* image,
+                                  const image::ImageView* mask,
                                   const SiftParameters* parameters,
                                   std::vector<Keypoint>* keypoints,
                                   std::vector<float32_t>* descriptors);

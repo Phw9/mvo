@@ -67,39 +67,27 @@ success and 0 when the point leaves the image, the patch is
 ill-conditioned, or the inputs are non-finite; failed points keep
 their initial disparity.
 
-@param left_image Left rectified grayscale image.
-@param right_image Right rectified grayscale image.
-@param left_points Left-image points, length point_count.
-@param initial_disparity Initial disparities, length point_count.
-@param point_count Number of points (>= 0).
+The two images must be single-channel and share the same element depth
+(k64FC1 or k32FC1); the refinement runs its f64 or f32 path accordingly.
+
+@param left_image Left rectified grayscale image (k64FC1 or k32FC1).
+@param right_image Right rectified grayscale image, same type and shape.
+@param left_points Left-image points, N-by-2 (k64FC1).
+@param initial_disparity Initial disparities, length N.
 @param parameters Tracker parameters; null uses klt_default_parameters.
-@param disparity_out Output refined disparities, length point_count.
-@param status Output per-point status, length point_count.
-@param errors Optional output mean absolute patch errors.
+@param disparity_out Output refined disparities, length N.
+@param status Output per-point status, length N.
+@param errors Optional output mean absolute patch errors, length N.
 @returns ErrorCode.
 */
-ErrorCode klt_refine_disparity(const KltImageView* left_image,
-                               const KltImageView* right_image,
-                               const KltPoint* left_points,
+ErrorCode klt_refine_disparity(const image::ImageView* left_image,
+                               const image::ImageView* right_image,
+                               const Matrix* left_points,
                                const float64_t* initial_disparity,
-                               int32_t point_count,
                                const KltParameters* parameters,
                                float64_t* disparity_out,
                                uint8_t* status,
                                float64_t* errors = nullptr);
-
-/*
-Float32 overload of klt_refine_disparity.
-*/
-ErrorCode klt_refine_disparity_f32(const KltImageViewF32* left_image,
-                                   const KltImageViewF32* right_image,
-                                   const KltPoint* left_points,
-                                   const float64_t* initial_disparity,
-                                   int32_t point_count,
-                                   const KltParameters* parameters,
-                                   float64_t* disparity_out,
-                                   uint8_t* status,
-                                   float64_t* errors = nullptr);
 
 /*
 Dense block-matching parameters.
@@ -133,24 +121,19 @@ range is empty, or that fail the uniqueness check get the invalid
 sentinel -1; valid pixels get disparity d with
 u_right = u_left - d.
 
-@param left_image Left rectified grayscale image.
-@param right_image Right rectified grayscale image (same size).
+The two images must be single-channel and share the same element depth
+(k64FC1 or k32FC1); block matching runs its f64 or f32 path accordingly.
+
+@param left_image Left rectified grayscale image (k64FC1 or k32FC1).
+@param right_image Right rectified grayscale image, same type and size.
 @param params Optional parameters; null uses defaults.
 @param disparity Output rows-by-cols disparity map; pre-allocated.
 @returns ErrorCode.
 */
-ErrorCode compute_disparity(const KltImageView* left_image,
-                            const KltImageView* right_image,
+ErrorCode compute_disparity(const image::ImageView* left_image,
+                            const image::ImageView* right_image,
                             const StereoBlockMatchParams* params,
                             Matrix* disparity);
-
-/*
-Float32 overload of compute_disparity.
-*/
-ErrorCode compute_disparity_f32(const KltImageViewF32* left_image,
-                                const KltImageViewF32* right_image,
-                                const StereoBlockMatchParams* params,
-                                Matrix* disparity);
 
 }  // namespace feature2d
 }  // namespace cvlib

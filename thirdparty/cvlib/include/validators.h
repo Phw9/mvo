@@ -37,6 +37,10 @@ inline ErrorCode validate_matrix(const Matrix* m) {
         result = ErrorCode::kNullPointer;
     } else if (m->rows <= 0 || m->cols <= 0) {
         result = ErrorCode::kInvalidDimension;
+    } else if (m->type != k64FC1) {
+        // Numeric kernels operate on single-channel f64 buffers; a matrix
+        // carrying image pixels (other depths/channels) is rejected here.
+        result = ErrorCode::kInvalidArgument;
     }
     return result;
 }
@@ -197,9 +201,10 @@ Validates that every matrix entry is finite (rejects NaN/Inf).
 inline ErrorCode validate_finite_matrix(const Matrix* m) {
     ErrorCode result = validate_matrix(m);
     if (result == ErrorCode::kSuccess) {
+        const float64_t* p = m->ptr<float64_t>();
         const int32_t n = m->rows * m->cols;
         for (int32_t i = 0; i < n; ++i) {
-            if (!std::isfinite(m->data[i])) {
+            if (!std::isfinite(p[i])) {
                 result = ErrorCode::kInvalidArgument;
                 break;
             }
@@ -250,9 +255,10 @@ inline ErrorCode validate_noise_covariance(const Matrix* m) {
     }
     if (result == ErrorCode::kSuccess) {
         float64_t max_abs = 0.0;
+        const float64_t* p = m->ptr<float64_t>();
         const int32_t n = m->rows * m->cols;
         for (int32_t i = 0; i < n; ++i) {
-            const float64_t a = std::fabs(m->data[i]);
+            const float64_t a = std::fabs(p[i]);
             if (a > max_abs) {
                 max_abs = a;
             }

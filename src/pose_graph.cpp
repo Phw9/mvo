@@ -91,7 +91,7 @@ void load_pose_transform(const PoseGraphContext& ctx,
                          int32_t pose_idx, cvlib::Matrix* t) {
     if (pose_idx < ctx.fixed_pose_count) {
         params12_to_transform(
-            ctx.data->poses->data + pose_idx * kPoseParamSize, t);
+            ctx.data->poses->ptr<cvlib::float64_t>() + pose_idx * kPoseParamSize, t);
     } else {
         params12_to_transform(
             params +
@@ -108,7 +108,7 @@ bool pose_graph_residuals(const cvlib::float64_t* params, int32_t n_params,
     const cvlib::Matrix* weights = ctx->data->weights;
     bool ok = n_residuals == kPoseLocalSize * edges->rows;
     for (int32_t k = 0; ok && k < edges->rows; ++k) {
-        const cvlib::float64_t* edge_row = edges->data + k * kEdgeCols;
+        const cvlib::float64_t* edge_row = edges->ptr<cvlib::float64_t>() + k * kEdgeCols;
         const int32_t from_idx = static_cast<int32_t>(edge_row[0]);
         const int32_t to_idx = static_cast<int32_t>(edge_row[1]);
         load_pose_transform(*ctx, params, from_idx, &ctx->t_from);
@@ -221,7 +221,7 @@ cvlib::ErrorCode pose_graph_optimization(
             ec = cvlib::ErrorCode::kNullPointer;
         } else {
             for (int32_t i = 0; i < n_free * kPoseParamSize; ++i) {
-                params[i] = data->poses->data[
+                params[i] = data->poses->ptr<cvlib::float64_t>()[
                     used_options->fixed_pose_count * kPoseParamSize + i];
             }
             cvlib::optimize::Problem problem;
@@ -236,7 +236,7 @@ cvlib::ErrorCode pose_graph_optimization(
                 &problem, &params, &used_options->lm, report);
             if (ec == cvlib::ErrorCode::kSuccess) {
                 for (int32_t i = 0; i < n_free * kPoseParamSize; ++i) {
-                    data->poses->data[
+                    data->poses->ptr<cvlib::float64_t>()[
                         used_options->fixed_pose_count * kPoseParamSize +
                         i] = params[i];
                 }
@@ -285,7 +285,7 @@ double recompute_pose_graph_cost(const PoseGraphData& data,
     ctx.fixed_pose_count = fixed_pose_count;
     if (params.data != nullptr && create_context_scratch(&ctx)) {
         for (int32_t i = 0; i < n_free * kPoseParamSize; ++i) {
-            params[i] = data.poses->data[
+            params[i] = data.poses->ptr<cvlib::float64_t>()[
                 fixed_pose_count * kPoseParamSize + i];
         }
         if (pose_graph_residuals(params.data, params.size, residuals.data(),
@@ -329,8 +329,8 @@ void debug_loop_edge_error(const cvlib::Matrix& poses,
     cvlib::Matrix t_rel = cvlib::matrix_create(4, 4);
     cvlib::Matrix t_err = cvlib::matrix_create(4, 4);
     cvlib::Vector xi = cvlib::vector_create(kPoseLocalSize);
-    params12_to_transform(poses.data + from_row * kPoseParamSize, &t_from);
-    params12_to_transform(poses.data + to_row * kPoseParamSize, &t_to);
+    params12_to_transform(poses.ptr<cvlib::float64_t>() + from_row * kPoseParamSize, &t_from);
+    params12_to_transform(poses.ptr<cvlib::float64_t>() + to_row * kPoseParamSize, &t_to);
     params12_to_transform(edge_row.data() + 2, &z);
     const bool ok =
         cvlib::calib3d::inv_transform(&z, &z_inv) ==
@@ -542,7 +542,7 @@ bool sim3_residuals(const cvlib::float64_t* params, int32_t n_params,
     const cvlib::Matrix* edges = ctx->edges;
     bool ok = n_residuals == kSim3LocalSize * edges->rows;
     for (int32_t k = 0; ok && k < edges->rows; ++k) {
-        const cvlib::float64_t* edge_row = edges->data + k * kEdgeCols;
+        const cvlib::float64_t* edge_row = edges->ptr<cvlib::float64_t>() + k * kEdgeCols;
         const int32_t from_idx = static_cast<int32_t>(edge_row[0]);
         const int32_t to_idx = static_cast<int32_t>(edge_row[1]);
         auto load = [&](int32_t idx) {
@@ -565,7 +565,7 @@ bool sim3_residuals(const cvlib::float64_t* params, int32_t n_params,
         const Sim3 error = sim3_compose(
             sim3_inverse(z), sim3_compose(s_to, sim3_inverse(s_from)));
         for (int32_t i = 0; i < 9; ++i) {
-            ctx->r_mat.data[i] = error.r[i];
+            ctx->r_mat.ptr<cvlib::float64_t>()[i] = error.r[i];
         }
         ok = cvlib::calib3d::so3_log(&ctx->r_mat, &ctx->vec3) ==
              cvlib::ErrorCode::kSuccess;
@@ -605,7 +605,7 @@ void sim3_plus(const cvlib::float64_t* x, int32_t n_params,
                 for (int32_t col = 0; col < 3; ++col) {
                     double value = 0.0;
                     for (int32_t k = 0; k < 3; ++k) {
-                        value += ctx->rot_out.data[row * 3 + k] *
+                        value += ctx->rot_out.ptr<cvlib::float64_t>()[row * 3 + k] *
                                  s.r[k * 3 + col];
                     }
                     rotated[row * 3 + col] = value;
@@ -778,7 +778,7 @@ bool compute_optimized_centers(const std::vector<Pose>& base_poses,
             base_poses[static_cast<std::size_t>(nodes[
                 static_cast<std::size_t>(p)])], &t_old);
         params12_to_transform(
-            optimized_poses.data + p * kPoseParamSize, &t_new);
+            optimized_poses.ptr<cvlib::float64_t>() + p * kPoseParamSize, &t_new);
         ok = cvlib::calib3d::inv_transform(&t_old, &t_old_inv) ==
                  cvlib::ErrorCode::kSuccess &&
              cvlib::linalg::matmul(
