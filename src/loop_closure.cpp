@@ -454,36 +454,14 @@ bool estimate_metric_loop_transform(
     *inliers = 0;
     if (count >= static_cast<std::size_t>(parameters.metric_min_inliers)) {
         cv::RNG rng(0x53494D33);
-        // Once centered, any 3 points are coplanar, so a 3-point sample gives
-        // a rank-2 cross covariance whose out-of-plane rotation is
-        // under-determined -- the fit then depends on how the SVD resolves the
-        // null direction (cv::SVD and cvlib's Jacobi SVD can disagree by up to
-        // a 180-degree flip). Four distinct points make the minimal hypothesis
-        // full rank and SVD-implementation independent.
-        constexpr int32_t kMetricSampleSize = 4;
-        std::vector<cv::Point3f> sample_from(kMetricSampleSize);
-        std::vector<cv::Point3f> sample_to(kMetricSampleSize);
-        std::vector<int32_t> sample_indices(kMetricSampleSize);
+        std::vector<cv::Point3f> sample_from(3);
+        std::vector<cv::Point3f> sample_to(3);
         std::vector<int32_t> best_inlier_indices;
         for (int32_t iteration = 0;
              iteration < parameters.metric_ransac_iters; ++iteration) {
-            for (int32_t s = 0; s < kMetricSampleSize; ++s) {
-                int32_t index = rng.uniform(0, static_cast<int32_t>(count));
-                bool duplicate = true;
-                while (duplicate) {
-                    duplicate = false;
-                    for (int32_t p = 0; p < s; ++p) {
-                        if (sample_indices[static_cast<std::size_t>(p)] ==
-                            index) {
-                            duplicate = true;
-                            break;
-                        }
-                    }
-                    if (duplicate) {
-                        index = rng.uniform(0, static_cast<int32_t>(count));
-                    }
-                }
-                sample_indices[static_cast<std::size_t>(s)] = index;
+            for (int32_t s = 0; s < 3; ++s) {
+                const int32_t index =
+                    rng.uniform(0, static_cast<int32_t>(count));
                 sample_from[static_cast<std::size_t>(s)] =
                     from_points[static_cast<std::size_t>(index)];
                 sample_to[static_cast<std::size_t>(s)] =

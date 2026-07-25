@@ -15,6 +15,30 @@ namespace cvlib {
 namespace image {
 
 /*
+Converts a 3- or 4-channel colour image to single-channel luminance using
+the weights 0.299/0.587/0.114 over channels 0, 1, 2 (R, G, B); any extra
+channel is ignored. Bridges a colour image into the single-channel
+improc / feature2d paths.
+
+@param src Source view, 3 or 4 channels, any pixel format.
+@param dst Output image, same rows/cols, single channel, any format;
+       pre-created. Values are clamped/rounded on write for integer depths.
+@returns ErrorCode.
+*/
+ErrorCode rgb2gray(const ImageView* src, Image* dst);
+
+/*
+Halves image resolution: blurs with the separable binomial kernel
+[1 4 6 4 1]/16 (reflected borders) then keeps every second sample.
+
+@param src Source view, single channel, any pixel format.
+@param dst Output image, ((rows+1)/2)-by-((cols+1)/2), single channel, any
+       format; pre-created.
+@returns ErrorCode.
+*/
+ErrorCode pyr_down(const ImageView* src, Image* dst);
+
+/*
 Separable convolution: filters rows with kernel_x and columns with
 kernel_y (both odd-length), with reflected borders (the edge sample is
 not duplicated).
