@@ -1,0 +1,13 @@
+{
+  "mono_local_ba": {
+    "enabled": 1,
+    "window": 10,
+    "interval": 5,
+    "max_points": 250,
+    "min_observations": 3,
+    "min_camera_observations": 3,
+    "max_iterations": 10,
+    "loss_scale": 3.0,
+    "solver": 1
+  }
+}

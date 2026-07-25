@@ -141,6 +141,22 @@ struct StereoParameters {
     double full_ba_loss_scale = 3.0;
 };
 
+// Windowed local bundle adjustment for the monocular path. The window holds
+// the most recent poses; the first (oldest) surviving camera is fixed as the
+// gauge anchor so the refinement stays continuous with the published
+// trajectory. No stereo rows and no metric scale are involved.
+struct MonoLocalBaParameters {
+    int32_t enabled = 1;
+    int32_t window = 10;
+    int32_t interval = 5;
+    int32_t max_points = 250;
+    int32_t min_observations = 3;
+    int32_t min_camera_observations = 3;
+    int32_t max_iterations = 10;
+    double loss_scale = 3.0;
+    int32_t solver = 1;
+};
+
 struct VisualizationParameters {
     float previous_map_point_radius = 0.08F;
     float current_map_point_radius = 0.18F;
@@ -162,6 +178,7 @@ struct MvoParameters {
     BundleAdjustmentParameters bundle_adjustment;
     LoopClosureParameters loop_closure;
     StereoParameters stereo;
+    MonoLocalBaParameters mono_local_ba;
     VisualizationParameters visualization;
 };
 

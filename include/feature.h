@@ -30,6 +30,7 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
                   std::vector<int32_t>* tracked_indices,
                   bool debug_geometry,
                   const std::string& tag,
-                  bool wide_search);
+                  bool wide_search,
+                  const std::vector<cv::Point2f>* predicted_next = nullptr);
 
 }  // namespace mvo

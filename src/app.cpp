@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include "bundle_adjustment.h"
 #include "converter.h"
 #include "feature.h"
 #include "frame_source.h"
@@ -55,6 +56,87 @@ void update_pending_map_point(MapPoint* point,
     point->last_seen_frame = frame_id;
     point->candidate = point->track_length <
                        parameters.candidate_min_track_length;
+}
+
+// Extrapolates the next world->camera pose assuming the inter-frame motion is
+// constant: predicted = M * last, where M is the motion from before_last to
+// last (Rm = R_last * R_before^T, tm = t_last - Rm * t_before).
+void predict_constant_velocity_pose(const Pose& before_last, const Pose& last,
+                                    Pose* predicted) {
+    double rm[9];
+    for (int32_t r = 0; r < 3; ++r) {
+        for (int32_t c = 0; c < 3; ++c) {
+            double sum = 0.0;
+            for (int32_t k = 0; k < 3; ++k) {
+                sum += last.r[r * 3 + k] * before_last.r[c * 3 + k];
+            }
+            rm[r * 3 + c] = sum;
+        }
+    }
+    double tm[3];
+    for (int32_t r = 0; r < 3; ++r) {
+        tm[r] = last.t[r] - (rm[r * 3 + 0] * before_last.t[0] +
+                             rm[r * 3 + 1] * before_last.t[1] +
+                             rm[r * 3 + 2] * before_last.t[2]);
+    }
+    for (int32_t r = 0; r < 3; ++r) {
+        for (int32_t c = 0; c < 3; ++c) {
+            double sum = 0.0;
+            for (int32_t k = 0; k < 3; ++k) {
+                sum += rm[r * 3 + k] * last.r[k * 3 + c];
+            }
+            predicted->r[r * 3 + c] = sum;
+        }
+        predicted->t[r] = rm[r * 3 + 0] * last.t[0] +
+                          rm[r * 3 + 1] * last.t[1] +
+                          rm[r * 3 + 2] * last.t[2] + tm[r];
+    }
+}
+
+// Projects a world point with a pose and intrinsics; false if behind camera.
+bool project_map_point(const cv::Point3f& world, const Pose& pose,
+                       const CameraIntrinsics& camera, cv::Point2f* pixel) {
+    const double x = static_cast<double>(world.x);
+    const double y = static_cast<double>(world.y);
+    const double z = static_cast<double>(world.z);
+    const double xc = pose.r[0] * x + pose.r[1] * y + pose.r[2] * z + pose.t[0];
+    const double yc = pose.r[3] * x + pose.r[4] * y + pose.r[5] * z + pose.t[1];
+    const double zc = pose.r[6] * x + pose.r[7] * y + pose.r[8] * z + pose.t[2];
+    if (zc <= 1.0e-6) {
+        return false;
+    }
+    pixel->x = static_cast<float>(camera.fx * xc / zc + camera.cx);
+    pixel->y = static_cast<float>(camera.fy * yc / zc + camera.cy);
+    return true;
+}
+
+// Builds a per-point motion prediction (parallel to state->prev_points) from
+// the constant-velocity pose, reprojecting positioned map points and falling
+// back to the previous pixel otherwise. Returns null when no motion history.
+const std::vector<cv::Point2f>* build_motion_prediction(
+    const TrackState& state, const CameraIntrinsics& camera,
+    std::vector<cv::Point2f>* prediction) {
+    prediction->clear();
+    if (!state.has_pose_before_last ||
+        state.prev_points.size() != state.map_points.size() ||
+        state.prev_points.empty()) {
+        return nullptr;
+    }
+    Pose predicted_pose;
+    predict_constant_velocity_pose(state.pose_before_last, state.prev_pose,
+                                   &predicted_pose);
+    prediction->resize(state.prev_points.size());
+    for (std::size_t i = 0; i < state.prev_points.size(); ++i) {
+        cv::Point2f pixel;
+        if (state.map_points[i].has_position &&
+            project_map_point(state.map_points[i].position, predicted_pose,
+                              camera, &pixel)) {
+            (*prediction)[i] = pixel;
+        } else {
+            (*prediction)[i] = state.prev_points[i];
+        }
+    }
+    return prediction;
 }
 
 std::size_t count_pending_map_points(const std::vector<MapPoint>& map_points) {
@@ -310,10 +392,13 @@ void process_frame_with_tracks(const AppConfig& config, int32_t frame_id,
     const Pose previous_pose = state->prev_pose;
     bool pnp_ok = false;
     bool recovered_ok = false;
+    std::vector<cv::Point2f> motion_prediction;
+    const std::vector<cv::Point2f>* prediction =
+        build_motion_prediction(*state, config.camera, &motion_prediction);
     track_points(state->prev_image, image, state->prev_points,
                  config.parameters.feature, &tracked_prev, &raw_tracked_next,
                  &tracked_indices, config.debug_geometry,
-                 "frame_" + std::to_string(frame_id), true);
+                 "frame_" + std::to_string(frame_id), true, prediction);
 
     std::vector<cv::Point2f> tracked_next;
     std::vector<MapPoint> next_map_points;
@@ -370,9 +455,32 @@ void process_frame_with_tracks(const AppConfig& config, int32_t frame_id,
     }
     if (pnp_ok && !recovered_ok) {
         state->prev_image = image;
+        state->pose_before_last = state->prev_pose;
+        state->has_pose_before_last = true;
         state->prev_pose = state->last_pose;
         state->prev_points = tracked_next;
         state->map_points = next_map_points;
+        // Record this frame's pose, then run windowed local BA over the last
+        // few frames. Both must happen after the map update so the current
+        // frame's archived observations and committed map points are in the
+        // window, and before run_loop_query so the keyframe added for this
+        // frame carries the refined pose.
+        const MonoLocalBaParameters& local_ba =
+            config.parameters.mono_local_ba;
+        state->pose_window.push_back({frame_id, state->last_pose});
+        if (static_cast<int32_t>(state->pose_window.size()) >
+            local_ba.window) {
+            state->pose_window.erase(
+                state->pose_window.begin(),
+                state->pose_window.end() - local_ba.window);
+        }
+        if (config.run_ba && local_ba.enabled != 0 &&
+            static_cast<int32_t>(state->pose_window.size()) >=
+                local_ba.window &&
+            frame_id % local_ba.interval == 0) {
+            run_mono_local_ba(config.camera, local_ba, frame_id,
+                              config.debug_geometry, archive, bow_db, state);
+        }
     } else if (!recovered_ok) {
         std::cout << "frame_pose_failed frame=" << frame_id
                   << " tracked=" << tracked_next.size()

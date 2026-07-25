@@ -77,13 +77,29 @@ struct MapArchive {
     std::unordered_map<int32_t, int32_t> last_seen;
 };
 
+// Recent per-frame world->camera pose, kept in a bounded ring buffer so the
+// mono windowed local BA can refine the last few poses jointly with the map
+// points their KLT tracks observe.
+struct FramePose {
+    int32_t frame_id = 0;
+    Pose pose = {};
+};
+
 struct TrackState {
     cv::Mat prev_image;
     std::vector<cv::Point2f> prev_points;
     std::vector<MapPoint> map_points;
     std::vector<cv::Point3f> all_map_points;
+    // Sliding window of recent committed poses feeding run_mono_local_ba;
+    // trimmed to the configured window size after every successful frame.
+    std::vector<FramePose> pose_window;
     Pose prev_pose;
     Pose last_pose;
+    // Pose from two frames back, used to build a constant-velocity motion
+    // prediction that seeds KLT (use_initial_flow) so fast forward motion
+    // does not drop tracks early.
+    Pose pose_before_last;
+    bool has_pose_before_last = false;
     int32_t frames_processed = 0;
     int32_t keyframes = 0;
     int32_t loop_queries = 0;

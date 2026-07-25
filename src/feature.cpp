@@ -152,7 +152,8 @@ cvlib::ErrorCode track_points_with_cvlib_klt(
     const std::vector<cv::Point2f>& prev_points,
     const cvlib::feature2d::KltParameters& klt_parameters,
     std::vector<cv::Point2f>* next_points,
-    std::vector<uint8_t>* status) {
+    std::vector<uint8_t>* status,
+    const std::vector<cv::Point2f>* predicted_next = nullptr) {
     cvlib::ErrorCode ec = cvlib::ErrorCode::kSuccess;
     next_points->clear();
     status->clear();
@@ -163,13 +164,27 @@ cvlib::ErrorCode track_points_with_cvlib_klt(
         cvlib::Matrix output_points = cvlib::matrix_create(point_count, 2);
         std::vector<cvlib::float64_t> errors(prev_points.size());
         status->resize(prev_points.size(), 0U);
+        // With a motion prediction, seed each search from it and let the
+        // tracker start there (use_initial_flow) rather than the previous
+        // position, so fast motion is followed without dropping the track.
+        cvlib::feature2d::KltParameters flow_parameters = klt_parameters;
+        const bool use_prediction =
+            predicted_next != nullptr &&
+            predicted_next->size() == prev_points.size();
+        flow_parameters.use_initial_flow = use_prediction;
         if (input_points.data != nullptr && output_points.data != nullptr) {
             for (int32_t i = 0; i < point_count; ++i) {
                 input_points(i, 0) = static_cast<double>(prev_points[i].x);
                 input_points(i, 1) = static_cast<double>(prev_points[i].y);
+                if (use_prediction) {
+                    output_points(i, 0) =
+                        static_cast<double>((*predicted_next)[i].x);
+                    output_points(i, 1) =
+                        static_cast<double>((*predicted_next)[i].y);
+                }
             }
             ec = cvlib::feature2d::klt_track(
-                &prev_view, &next_view, &input_points, &klt_parameters,
+                &prev_view, &next_view, &input_points, &flow_parameters,
                 &output_points, status->data(), errors.data());
             if (ec == cvlib::ErrorCode::kSuccess) {
                 next_points->resize(prev_points.size());
@@ -264,6 +279,7 @@ void run_klt_pass(const cv::Mat& prev_image,
                   int32_t window_size,
                   int32_t pyramid_levels,
                   bool adaptive_fb,
+                  const std::vector<cv::Point2f>* predicted_next,
                   KltPassResult* result) {
     reset_klt_pass_result(parameters, window_size, pyramid_levels, adaptive_fb,
                           result);
@@ -286,7 +302,7 @@ void run_klt_pass(const cv::Mat& prev_image,
     std::vector<cv::Point2f> backward_points;
     cvlib::ErrorCode ec = track_points_with_cvlib_klt(
         prev_view, next_view, prev_points, klt_parameters, &next_points,
-        &status);
+        &status, predicted_next);
     if (ec == cvlib::ErrorCode::kSuccess) {
         ec = track_points_with_cvlib_klt(
             next_view, prev_view, next_points, klt_parameters,
@@ -456,7 +472,8 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
                   std::vector<int32_t>* tracked_indices,
                   bool debug_geometry,
                   const std::string& tag,
-                  bool wide_search) {
+                  bool wide_search,
+                  const std::vector<cv::Point2f>* predicted_next) {
     bool ok = false;
     if (tracked_prev != nullptr) {
         tracked_prev->clear();
@@ -476,7 +493,7 @@ bool track_points(const cv::Mat& prev_image, const cv::Mat& image,
             wide_search ? parameters.klt_pyramid_levels
                         : parameters.klt_init_pyramid_levels;
         run_klt_pass(prev_image, image, prev_points, parameters, window_size,
-                     pyramid_levels, wide_search, &result);
+                     pyramid_levels, wide_search, predicted_next, &result);
 
         *tracked_prev = std::move(result.tracked_prev);
         *tracked_next = std::move(result.tracked_next);

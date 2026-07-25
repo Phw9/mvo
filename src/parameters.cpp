@@ -347,6 +347,30 @@ bool load_stereo_parameters(const std::filesystem::path& path,
     return ok;
 }
 
+bool load_mono_local_ba_parameters(const std::filesystem::path& path,
+                                   MonoLocalBaParameters* parameters) {
+    bool ok = false;
+    cv::FileStorage fs(path.string(), cv::FileStorage::READ |
+                                          cv::FileStorage::FORMAT_JSON);
+    if (fs.isOpened()) {
+        const cv::FileNode node = module_node(&fs, "mono_local_ba");
+        read_int_parameter(node, "enabled", &parameters->enabled);
+        read_int_parameter(node, "window", &parameters->window);
+        read_int_parameter(node, "interval", &parameters->interval);
+        read_int_parameter(node, "max_points", &parameters->max_points);
+        read_int_parameter(node, "min_observations",
+                           &parameters->min_observations);
+        read_int_parameter(node, "min_camera_observations",
+                           &parameters->min_camera_observations);
+        read_int_parameter(node, "max_iterations",
+                           &parameters->max_iterations);
+        read_double_parameter(node, "loss_scale", &parameters->loss_scale);
+        read_int_parameter(node, "solver", &parameters->solver);
+        ok = true;
+    }
+    return ok;
+}
+
 bool load_visualization_parameters(const std::filesystem::path& path,
                                    VisualizationParameters* parameters) {
     bool ok = false;
@@ -556,6 +580,22 @@ void sanitize_parameters(MvoParameters* parameters) {
         std::max(1, parameters->stereo.full_ba_max_iterations);
     parameters->stereo.full_ba_loss_scale =
         std::max(0.1, parameters->stereo.full_ba_loss_scale);
+    parameters->mono_local_ba.window =
+        std::max(2, parameters->mono_local_ba.window);
+    parameters->mono_local_ba.interval =
+        std::max(1, parameters->mono_local_ba.interval);
+    parameters->mono_local_ba.max_points =
+        std::max(1, parameters->mono_local_ba.max_points);
+    parameters->mono_local_ba.min_observations =
+        std::max(2, parameters->mono_local_ba.min_observations);
+    parameters->mono_local_ba.min_camera_observations =
+        std::max(1, parameters->mono_local_ba.min_camera_observations);
+    parameters->mono_local_ba.max_iterations =
+        std::max(1, parameters->mono_local_ba.max_iterations);
+    parameters->mono_local_ba.loss_scale =
+        std::max(0.1, parameters->mono_local_ba.loss_scale);
+    parameters->mono_local_ba.solver = std::min(
+        1, std::max(0, parameters->mono_local_ba.solver));
     parameters->visualization.log_chunk_size =
         std::max(16, parameters->visualization.log_chunk_size);
 }
@@ -582,6 +622,8 @@ bool load_parameter_configs(const std::string& directory,
                                          &parameters->loop_closure);
             load_stereo_parameters(root / "stereo.json",
                                    &parameters->stereo);
+            load_mono_local_ba_parameters(root / "local_ba.json",
+                                          &parameters->mono_local_ba);
             load_visualization_parameters(root / "visualization.json",
                                           &parameters->visualization);
             sanitize_parameters(parameters);
