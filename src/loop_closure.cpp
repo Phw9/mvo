@@ -2,6 +2,7 @@
 
 #include "converter.h"
 
+#include <calib3d/alignment.h>
 #include <calib3d/multiview.h>
 
 #include <opencv2/features2d.hpp>
@@ -386,70 +387,39 @@ std::unordered_map<int32_t, cv::Point3f> triangulate_local_points(
     return local_points;
 }
 
-cv::Vec3d to_vec3d(const cv::Point3f& point) {
-    return cv::Vec3d(static_cast<double>(point.x),
-                     static_cast<double>(point.y),
-                     static_cast<double>(point.z));
-}
-
-// Closed-form similarity transform x_to = scale * R * x_from + t (Umeyama).
+// Closed-form similarity transform x_to = scale * R * x_from + t (Umeyama),
+// delegated to cvlib's similarity_align: the same centered cross-covariance
+// SVD construction with a determinant sign correction and the
+// singular-value-sum / source-variance scale.
 bool solve_similarity(const std::vector<cv::Point3f>& from_points,
                       const std::vector<cv::Point3f>& to_points,
                       Pose* transform, double* scale) {
     const std::size_t count = from_points.size();
     bool ok = count >= 3U && to_points.size() == count;
     if (ok) {
-        cv::Vec3d from_centroid(0.0, 0.0, 0.0);
-        cv::Vec3d to_centroid(0.0, 0.0, 0.0);
-        for (std::size_t i = 0; i < count; ++i) {
-            from_centroid += to_vec3d(from_points[i]);
-            to_centroid += to_vec3d(to_points[i]);
-        }
-        from_centroid /= static_cast<double>(count);
-        to_centroid /= static_cast<double>(count);
-
-        cv::Matx33d covariance = cv::Matx33d::zeros();
-        double from_variance = 0.0;
-        for (std::size_t i = 0; i < count; ++i) {
-            const cv::Vec3d a = to_vec3d(from_points[i]) - from_centroid;
-            const cv::Vec3d b = to_vec3d(to_points[i]) - to_centroid;
-            for (int32_t row = 0; row < 3; ++row) {
-                for (int32_t col = 0; col < 3; ++col) {
-                    covariance(row, col) += b[row] * a[col];
-                }
-            }
-            from_variance += a.dot(a);
-        }
-        covariance *= 1.0 / static_cast<double>(count);
-        from_variance /= static_cast<double>(count);
-
-        cv::Mat w;
-        cv::Mat u;
-        cv::Mat vt;
-        cv::SVD::compute(cv::Mat(covariance), w, u, vt);
-        cv::Matx33d s = cv::Matx33d::eye();
-        if (cv::determinant(u) * cv::determinant(vt) < 0.0) {
-            s(2, 2) = -1.0;
-        }
-        const cv::Matx33d rotation =
-            cv::Matx33d(u.ptr<double>()) * s * cv::Matx33d(vt.ptr<double>());
-        double trace = 0.0;
-        for (int32_t i = 0; i < 3; ++i) {
-            trace += w.at<double>(i) * s(i, i);
-        }
-        ok = from_variance > 0.0 && std::isfinite(trace);
+        cvlib::Matrix src = points3f_to_matrix(from_points);
+        cvlib::Matrix dst = points3f_to_matrix(to_points);
+        cvlib::Matrix rotation = cvlib::matrix_create(3, 3);
+        cvlib::Vector translation = cvlib::vector_create(3);
+        cvlib::float64_t fitted_scale = 0.0;
+        const cvlib::ErrorCode ec = cvlib::calib3d::similarity_align(
+            &src, &dst, &rotation, &translation, &fitted_scale);
+        ok = ec == cvlib::ErrorCode::kSuccess &&
+             std::isfinite(fitted_scale) && fitted_scale > 0.0;
         if (ok) {
-            *scale = trace / from_variance;
-            const cv::Vec3d translation =
-                to_centroid - *scale * (rotation * from_centroid);
+            *scale = fitted_scale;
             for (int32_t row = 0; row < 3; ++row) {
                 for (int32_t col = 0; col < 3; ++col) {
-                    transform->r[row * 3 + col] = rotation(row, col);
+                    transform->r[row * 3 + col] =
+                        cvlib::matrix_get(&rotation, row, col);
                 }
                 transform->t[row] = translation[row];
             }
-            ok = std::isfinite(*scale) && *scale > 0.0;
         }
+        cvlib::matrix_destroy(&src);
+        cvlib::matrix_destroy(&dst);
+        cvlib::matrix_destroy(&rotation);
+        cvlib::vector_destroy(&translation);
     }
     return ok;
 }
@@ -484,14 +454,36 @@ bool estimate_metric_loop_transform(
     *inliers = 0;
     if (count >= static_cast<std::size_t>(parameters.metric_min_inliers)) {
         cv::RNG rng(0x53494D33);
-        std::vector<cv::Point3f> sample_from(3);
-        std::vector<cv::Point3f> sample_to(3);
+        // Once centered, any 3 points are coplanar, so a 3-point sample gives
+        // a rank-2 cross covariance whose out-of-plane rotation is
+        // under-determined -- the fit then depends on how the SVD resolves the
+        // null direction (cv::SVD and cvlib's Jacobi SVD can disagree by up to
+        // a 180-degree flip). Four distinct points make the minimal hypothesis
+        // full rank and SVD-implementation independent.
+        constexpr int32_t kMetricSampleSize = 4;
+        std::vector<cv::Point3f> sample_from(kMetricSampleSize);
+        std::vector<cv::Point3f> sample_to(kMetricSampleSize);
+        std::vector<int32_t> sample_indices(kMetricSampleSize);
         std::vector<int32_t> best_inlier_indices;
         for (int32_t iteration = 0;
              iteration < parameters.metric_ransac_iters; ++iteration) {
-            for (int32_t s = 0; s < 3; ++s) {
-                const int32_t index =
-                    rng.uniform(0, static_cast<int32_t>(count));
+            for (int32_t s = 0; s < kMetricSampleSize; ++s) {
+                int32_t index = rng.uniform(0, static_cast<int32_t>(count));
+                bool duplicate = true;
+                while (duplicate) {
+                    duplicate = false;
+                    for (int32_t p = 0; p < s; ++p) {
+                        if (sample_indices[static_cast<std::size_t>(p)] ==
+                            index) {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                    if (duplicate) {
+                        index = rng.uniform(0, static_cast<int32_t>(count));
+                    }
+                }
+                sample_indices[static_cast<std::size_t>(s)] = index;
                 sample_from[static_cast<std::size_t>(s)] =
                     from_points[static_cast<std::size_t>(index)];
                 sample_to[static_cast<std::size_t>(s)] =
