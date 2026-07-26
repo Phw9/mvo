@@ -42,6 +42,10 @@ struct MapPoint {
     int32_t age = 0;
     int32_t track_length = 1;
     double last_reprojection_error = 0.0;
+    // Consecutive frames whose reprojection error stayed above the cull
+    // threshold; reset whenever the point reprojects cleanly. Drives the
+    // lifetime map-point cull.
+    int32_t consecutive_bad_frames = 0;
     bool has_position = true;
     bool has_anchor = false;
     bool candidate = true;
@@ -104,6 +108,12 @@ struct TrackState {
     int32_t keyframes = 0;
     int32_t loop_queries = 0;
     int32_t pnp_success = 0;
+    // Reference for mono keyframe selection: the frame id, world->camera pose,
+    // and positioned-map-point count captured at the last inserted keyframe.
+    // Tracking updates last_pose every frame; only keyframes advance these.
+    int32_t last_keyframe_frame = 0;
+    int32_t last_keyframe_tracked = 0;
+    Pose last_keyframe_pose = {};
 };
 
 struct ReprojectionStats {

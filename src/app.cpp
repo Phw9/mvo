@@ -58,6 +58,47 @@ void update_pending_map_point(MapPoint* point,
                        parameters.candidate_min_track_length;
 }
 
+// Rotation angle in degrees between two world->camera rotations, taken from
+// the trace of R_b * R_a^T. Scale-independent, so it is safe to gate mono
+// keyframe insertion on it even though the mono map scale is arbitrary.
+double relative_rotation_deg(const Pose& a, const Pose& b) {
+    double trace = 0.0;
+    for (int32_t i = 0; i < 3; ++i) {
+        for (int32_t k = 0; k < 3; ++k) {
+            trace += b.r[i * 3 + k] * a.r[i * 3 + k];
+        }
+    }
+    double cos_angle = (trace - 1.0) / 2.0;
+    cos_angle = std::max(-1.0, std::min(1.0, cos_angle));
+    const double rad_to_deg = 180.0 / 3.14159265358979323846;
+    return std::acos(cos_angle) * rad_to_deg;
+}
+
+// Mono keyframe criterion: promote the current frame to a keyframe when the
+// tracked positioned-map-point count has dropped below a fraction of the last
+// keyframe's, when the rotation since the last keyframe exceeds a threshold,
+// or when the keyframe gap reaches its cap. enabled=0 promotes every frame.
+bool should_insert_keyframe(const KeyframeParameters& parameters,
+                            int32_t frame_id, int32_t tracked_positioned,
+                            const TrackState& state) {
+    if (parameters.enabled == 0) {
+        return true;
+    }
+    if (frame_id - state.last_keyframe_frame >= parameters.kf_max_gap) {
+        return true;
+    }
+    if (static_cast<double>(tracked_positioned) <
+        parameters.kf_min_tracked_ratio *
+            static_cast<double>(state.last_keyframe_tracked)) {
+        return true;
+    }
+    if (relative_rotation_deg(state.last_keyframe_pose, state.last_pose) >
+        parameters.kf_min_rotation_deg) {
+        return true;
+    }
+    return false;
+}
+
 // Extrapolates the next world->camera pose assuming the inter-frame motion is
 // constant: predicted = M * last, where M is the motion from before_last to
 // last (Rm = R_last * R_before^T, tm = t_last - Rm * t_before).
@@ -292,7 +333,7 @@ void collect_pnp_candidates(const std::vector<MapPoint>& map_points,
 }
 
 void retain_pnp_inlier_tracks(const AppConfig& config, int32_t frame_id,
-                              const Pose& pose,
+                              const Pose& pose, bool archive_observations,
                               std::vector<cv::Point2f>* tracked_points,
                               std::vector<MapPoint>* map_points,
                               MapArchive* archive) {
@@ -313,7 +354,7 @@ void retain_pnp_inlier_tracks(const AppConfig& config, int32_t frame_id,
                     config.parameters.pnp.reprojection_inlier_threshold) {
                 update_tracked_map_point(&point, frame_id, residual,
                                          config.parameters.mapping);
-                if (point.id >= 0) {
+                if (archive_observations && point.id >= 0) {
                     archive_observation(archive,
                                         {frame_id, point.id, observation});
                     archive->positions[point.id] = point.position;
@@ -378,6 +419,14 @@ bool initialize_tracking(const AppConfig& config, FrameSource* source,
                        visualizer, state);
         run_loop_query(image1, 1, state->last_pose, config, bow_db,
                        archive, visualizer, state);
+        // The initialization frames are always keyframes; seed the mono
+        // keyframe reference from frame 1 so selection starts from a real
+        // baseline.
+        state->keyframes = 2;
+        state->last_keyframe_frame = 1;
+        state->last_keyframe_pose = state->last_pose;
+        state->last_keyframe_tracked =
+            count_positioned_map_points(state->map_points);
     }
     return ok;
 }
@@ -431,13 +480,25 @@ void process_frame_with_tracks(const AppConfig& config, int32_t frame_id,
                   << " tracked=" << tracked_next.size() << std::endl;
     }
 
+    bool is_keyframe = true;
+    int32_t tracked_positioned = 0;
     if (pnp_ok) {
+        tracked_positioned = count_positioned_map_points(next_map_points);
+        is_keyframe = should_insert_keyframe(config.parameters.keyframe,
+                                             frame_id, tracked_positioned,
+                                             *state);
+        // Observations are archived for the local BA only on keyframes, so the
+        // BA window spans well-separated keyframes rather than every frame.
         retain_pnp_inlier_tracks(config, frame_id, state->last_pose,
-                                 &tracked_next, &next_map_points, archive);
+                                 is_keyframe, &tracked_next, &next_map_points,
+                                 archive);
         triangulate_pending_map_points(
             tracked_next, state->last_pose, config.camera, config.parameters,
             frame_id, config.debug_geometry, &next_map_points,
             &state->all_map_points);
+        cull_weak_map_points(frame_id, config.parameters.map_cull,
+                             config.debug_geometry, &tracked_next,
+                             &next_map_points);
         add_pending_feature_tracks(image, state->last_pose, frame_id,
                                    config.parameters, config.debug_geometry,
                                    &tracked_next, &next_map_points);
@@ -445,6 +506,7 @@ void process_frame_with_tracks(const AppConfig& config, int32_t frame_id,
             std::cout << "lifecycle frame=" << frame_id
                       << " active=" << tracked_next.size()
                       << " pnp_candidates=" << pnp_image_points.size()
+                      << " keyframe=" << (is_keyframe ? 1 : 0)
                       << std::endl;
         }
     } else {
@@ -454,40 +516,60 @@ void process_frame_with_tracks(const AppConfig& config, int32_t frame_id,
             frame_id, state);
     }
     if (pnp_ok && !recovered_ok) {
+        // Per-frame tracking state advances every frame so the KLT motion
+        // prediction and the visualizer keep working between keyframes.
         state->prev_image = image;
         state->pose_before_last = state->prev_pose;
         state->has_pose_before_last = true;
         state->prev_pose = state->last_pose;
         state->prev_points = tracked_next;
         state->map_points = next_map_points;
-        // Record this frame's pose, then run windowed local BA over the last
-        // few frames. Both must happen after the map update so the current
-        // frame's archived observations and committed map points are in the
-        // window, and before run_loop_query so the keyframe added for this
-        // frame carries the refined pose.
-        const MonoLocalBaParameters& local_ba =
-            config.parameters.mono_local_ba;
-        state->pose_window.push_back({frame_id, state->last_pose});
-        if (static_cast<int32_t>(state->pose_window.size()) >
-            local_ba.window) {
-            state->pose_window.erase(
-                state->pose_window.begin(),
-                state->pose_window.end() - local_ba.window);
-        }
-        if (config.run_ba && local_ba.enabled != 0 &&
-            static_cast<int32_t>(state->pose_window.size()) >=
-                local_ba.window &&
-            frame_id % local_ba.interval == 0) {
-            run_mono_local_ba(config.camera, local_ba, frame_id,
-                              config.debug_geometry, archive, bow_db, state);
+        if (is_keyframe) {
+            // Keyframe bookkeeping: this frame's pose becomes the reference,
+            // is pushed to the BA window, and feeds run_mono_local_ba. This
+            // runs after the map update so the current keyframe's committed
+            // map points are in the window, and before run_loop_query so the
+            // keyframe added for this frame carries the refined pose.
+            ++state->keyframes;
+            state->last_keyframe_frame = frame_id;
+            state->last_keyframe_pose = state->last_pose;
+            state->last_keyframe_tracked = tracked_positioned;
+            const MonoLocalBaParameters& local_ba =
+                config.parameters.mono_local_ba;
+            state->pose_window.push_back({frame_id, state->last_pose});
+            if (static_cast<int32_t>(state->pose_window.size()) >
+                local_ba.window) {
+                state->pose_window.erase(
+                    state->pose_window.begin(),
+                    state->pose_window.end() - local_ba.window);
+            }
+            if (config.run_ba && local_ba.enabled != 0 &&
+                static_cast<int32_t>(state->pose_window.size()) >=
+                    local_ba.window &&
+                frame_id % local_ba.interval == 0) {
+                run_mono_local_ba(config.camera, local_ba, frame_id,
+                                  config.debug_geometry, archive, bow_db,
+                                  state);
+            }
         }
     } else if (!recovered_ok) {
         std::cout << "frame_pose_failed frame=" << frame_id
                   << " tracked=" << tracked_next.size()
                   << " state_held=1" << std::endl;
     }
-    run_loop_query(image, frame_id, state->last_pose, config, bow_db,
-                   archive, visualizer, state);
+    if (recovered_ok) {
+        // A fresh two-view map resets the keyframe reference.
+        state->last_keyframe_frame = frame_id;
+        state->last_keyframe_pose = state->last_pose;
+        state->last_keyframe_tracked =
+            count_positioned_map_points(state->map_points);
+    }
+    // Loop closure and backend correction run per keyframe now that keyframes
+    // are sparse; between keyframes only per-frame tracking continues.
+    if (is_keyframe) {
+        run_loop_query(image, frame_id, state->last_pose, config, bow_db,
+                       archive, visualizer, state);
+    }
     ++state->frames_processed;
     if (pnp_ok || recovered_ok) {
         log_frame_state(visualizer, frame_id, image, *state);
@@ -576,7 +658,7 @@ void process_stereo_frame(const AppConfig& config, int32_t frame_id,
     }
 
     if (pnp_ok) {
-        retain_pnp_inlier_tracks(config, frame_id, state->last_pose,
+        retain_pnp_inlier_tracks(config, frame_id, state->last_pose, true,
                                  &tracked_next, &next_map_points, archive);
         add_pending_feature_tracks(left, state->last_pose, frame_id,
                                    config.parameters, config.debug_geometry,

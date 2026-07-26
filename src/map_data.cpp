@@ -243,6 +243,72 @@ int32_t triangulate_pending_map_points(
     return added;
 }
 
+int32_t cull_weak_map_points(int32_t frame_id,
+                             const MapCullParameters& parameters,
+                             bool debug_geometry,
+                             std::vector<cv::Point2f>* current_points,
+                             std::vector<MapPoint>* map_points) {
+    if (parameters.enabled == 0) {
+        return 0;
+    }
+    std::vector<cv::Point2f> kept_points;
+    std::vector<MapPoint> kept_map_points;
+    const std::size_t aligned_count = std::min(current_points->size(),
+                                               map_points->size());
+    kept_points.reserve(aligned_count);
+    kept_map_points.reserve(aligned_count);
+    int32_t culled = 0;
+    for (std::size_t i = 0; i < aligned_count; ++i) {
+        MapPoint point = (*map_points)[i];
+        bool keep = true;
+        if (point.has_position) {
+            // Refresh the consecutive-bad-frame streak from this frame's
+            // reprojection error, then cull survivors that stayed weak past
+            // the grace period.
+            if (point.last_reprojection_error >
+                parameters.mp_max_reprojection) {
+                ++point.consecutive_bad_frames;
+            } else {
+                point.consecutive_bad_frames = 0;
+            }
+            const int32_t existed = frame_id - point.created_frame;
+            if (existed >= parameters.mp_grace_frames) {
+                const bool weak_observations =
+                    point.track_length < parameters.mp_min_observations;
+                const bool chronically_bad =
+                    point.consecutive_bad_frames >=
+                    parameters.mp_max_bad_frames;
+                if (weak_observations || chronically_bad) {
+                    keep = false;
+                }
+            }
+        }
+        if (keep) {
+            kept_points.push_back((*current_points)[i]);
+            kept_map_points.push_back(point);
+        } else {
+            ++culled;
+        }
+    }
+    // Preserve any trailing tracks beyond the aligned prefix unchanged.
+    for (std::size_t i = aligned_count; i < current_points->size(); ++i) {
+        kept_points.push_back((*current_points)[i]);
+    }
+    for (std::size_t i = aligned_count; i < map_points->size(); ++i) {
+        kept_map_points.push_back((*map_points)[i]);
+    }
+    *current_points = kept_points;
+    *map_points = kept_map_points;
+    if (debug_geometry) {
+        std::cout << "map_cull frame=" << frame_id
+                  << " culled=" << culled
+                  << " active_3d=" << count_positioned_map_points(*map_points)
+                  << " active_tracks=" << map_points->size()
+                  << std::endl;
+    }
+    return culled;
+}
+
 Pose compose_reference_relative_pose(const Pose& reference_pose,
                                      const Pose& relative_pose) {
     Pose pose;

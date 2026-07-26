@@ -1,0 +1,8 @@
+{
+  "keyframe": {
+    "enabled": 0,
+    "kf_min_tracked_ratio": 0.75,
+    "kf_min_rotation_deg": 10.0,
+    "kf_max_gap": 8
+  }
+}

@@ -157,6 +157,38 @@ struct MonoLocalBaParameters {
     int32_t solver = 1;
 };
 
+// Monocular keyframe selection. A frame is promoted to a keyframe (added to
+// bow_db, pushed to pose_window, its observations archived, and reaching the
+// trajectory dump) only when one of the scale-independent criteria below is met
+// since the last keyframe. Between keyframes tracking still runs per frame but
+// the frame is not committed to the backend. enabled=0 makes every frame a
+// keyframe, reproducing the pre-selection behavior for A/B testing.
+//
+// Off by default: on KITTI 00 (first 1400 frames) sparse keyframes regress the
+// mono ATE from 22.5 m to 56.8 m. The windowed local BA gains come from
+// per-frame refinement over the dense persistent-id KLT tracks; sparsifying to
+// keyframes strips that refinement and stretches the BA window baseline past
+// the lifetime of the short-lived tracks. Retained for experimentation.
+struct KeyframeParameters {
+    int32_t enabled = 0;
+    double kf_min_tracked_ratio = 0.75;
+    double kf_min_rotation_deg = 10.0;
+    int32_t kf_max_gap = 8;
+};
+
+// Lifetime culling of chronically-weak positioned map points. Per-frame
+// reprojection outliers are already dropped in the retain path; this removes
+// survivors that, past a grace period, either accumulated too few observations
+// or kept a high reprojection error for too many consecutive frames.
+// enabled=0 disables the cull, reproducing the pre-cull behavior.
+struct MapCullParameters {
+    int32_t enabled = 1;
+    int32_t mp_grace_frames = 5;
+    int32_t mp_min_observations = 2;
+    double mp_max_reprojection = 4.0;
+    int32_t mp_max_bad_frames = 3;
+};
+
 struct VisualizationParameters {
     float previous_map_point_radius = 0.08F;
     float current_map_point_radius = 0.18F;
@@ -179,6 +211,8 @@ struct MvoParameters {
     LoopClosureParameters loop_closure;
     StereoParameters stereo;
     MonoLocalBaParameters mono_local_ba;
+    KeyframeParameters keyframe;
+    MapCullParameters map_cull;
     VisualizationParameters visualization;
 };
 

@@ -371,6 +371,45 @@ bool load_mono_local_ba_parameters(const std::filesystem::path& path,
     return ok;
 }
 
+bool load_keyframe_parameters(const std::filesystem::path& path,
+                              KeyframeParameters* parameters) {
+    bool ok = false;
+    cv::FileStorage fs(path.string(), cv::FileStorage::READ |
+                                          cv::FileStorage::FORMAT_JSON);
+    if (fs.isOpened()) {
+        const cv::FileNode node = module_node(&fs, "keyframe");
+        read_int_parameter(node, "enabled", &parameters->enabled);
+        read_double_parameter(node, "kf_min_tracked_ratio",
+                              &parameters->kf_min_tracked_ratio);
+        read_double_parameter(node, "kf_min_rotation_deg",
+                              &parameters->kf_min_rotation_deg);
+        read_int_parameter(node, "kf_max_gap", &parameters->kf_max_gap);
+        ok = true;
+    }
+    return ok;
+}
+
+bool load_map_cull_parameters(const std::filesystem::path& path,
+                              MapCullParameters* parameters) {
+    bool ok = false;
+    cv::FileStorage fs(path.string(), cv::FileStorage::READ |
+                                          cv::FileStorage::FORMAT_JSON);
+    if (fs.isOpened()) {
+        const cv::FileNode node = module_node(&fs, "map_cull");
+        read_int_parameter(node, "enabled", &parameters->enabled);
+        read_int_parameter(node, "mp_grace_frames",
+                           &parameters->mp_grace_frames);
+        read_int_parameter(node, "mp_min_observations",
+                           &parameters->mp_min_observations);
+        read_double_parameter(node, "mp_max_reprojection",
+                              &parameters->mp_max_reprojection);
+        read_int_parameter(node, "mp_max_bad_frames",
+                           &parameters->mp_max_bad_frames);
+        ok = true;
+    }
+    return ok;
+}
+
 bool load_visualization_parameters(const std::filesystem::path& path,
                                    VisualizationParameters* parameters) {
     bool ok = false;
@@ -596,6 +635,24 @@ void sanitize_parameters(MvoParameters* parameters) {
         std::max(0.1, parameters->mono_local_ba.loss_scale);
     parameters->mono_local_ba.solver = std::min(
         1, std::max(0, parameters->mono_local_ba.solver));
+    parameters->keyframe.enabled = std::min(
+        1, std::max(0, parameters->keyframe.enabled));
+    parameters->keyframe.kf_min_tracked_ratio = std::min(
+        1.0, std::max(0.0, parameters->keyframe.kf_min_tracked_ratio));
+    parameters->keyframe.kf_min_rotation_deg =
+        std::max(0.0, parameters->keyframe.kf_min_rotation_deg);
+    parameters->keyframe.kf_max_gap =
+        std::max(1, parameters->keyframe.kf_max_gap);
+    parameters->map_cull.enabled = std::min(
+        1, std::max(0, parameters->map_cull.enabled));
+    parameters->map_cull.mp_grace_frames =
+        std::max(0, parameters->map_cull.mp_grace_frames);
+    parameters->map_cull.mp_min_observations =
+        std::max(0, parameters->map_cull.mp_min_observations);
+    parameters->map_cull.mp_max_reprojection =
+        std::max(0.0, parameters->map_cull.mp_max_reprojection);
+    parameters->map_cull.mp_max_bad_frames =
+        std::max(1, parameters->map_cull.mp_max_bad_frames);
     parameters->visualization.log_chunk_size =
         std::max(16, parameters->visualization.log_chunk_size);
 }
@@ -624,6 +681,10 @@ bool load_parameter_configs(const std::string& directory,
                                    &parameters->stereo);
             load_mono_local_ba_parameters(root / "local_ba.json",
                                           &parameters->mono_local_ba);
+            load_keyframe_parameters(root / "keyframe.json",
+                                     &parameters->keyframe);
+            load_map_cull_parameters(root / "map_cull.json",
+                                     &parameters->map_cull);
             load_visualization_parameters(root / "visualization.json",
                                           &parameters->visualization);
             sanitize_parameters(parameters);

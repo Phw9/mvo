@@ -45,6 +45,11 @@ int32_t triangulate_pending_map_points(
     bool debug_geometry,
     std::vector<MapPoint>* map_points,
     std::vector<cv::Point3f>* all_map_points);
+int32_t cull_weak_map_points(int32_t frame_id,
+                             const MapCullParameters& parameters,
+                             bool debug_geometry,
+                             std::vector<cv::Point2f>* current_points,
+                             std::vector<MapPoint>* map_points);
 Pose compose_reference_relative_pose(const Pose& reference_pose,
                                      const Pose& relative_pose);
 bool recover_two_view_from_reference(const cv::Mat& reference_image,

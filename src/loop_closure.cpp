@@ -533,6 +533,29 @@ keypoint that also has local depth on both sides contributes one pair, the
 match keyframe's point in its own camera frame and the query frame's point in
 its own. The similarity between the two sets is the loop's Sim(3).
 */
+// Index of the keyframe whose frame_id is closest to target_frame, or
+// db.keyframes.size() when the database is empty. The metric neighbor is
+// chosen a fixed number of FRAMES away (not keyframes away) so the
+// triangulation baseline, and thus the descriptor overlap between a keyframe
+// and its neighbor, stays comparable whether keyframes are dense (one per
+// frame, where frame_id == index and this reproduces the old index gap) or
+// sparse (keyframe-selected, where an index gap would overshoot into images
+// with no overlap).
+std::size_t nearest_keyframe_to_frame(const BowDatabase& db,
+                                      int32_t target_frame) {
+    std::size_t best = db.keyframes.size();
+    int32_t best_distance = 0;
+    for (std::size_t i = 0; i < db.keyframes.size(); ++i) {
+        const int32_t distance =
+            std::abs(db.keyframes[i].frame_id - target_frame);
+        if (best == db.keyframes.size() || distance < best_distance) {
+            best = i;
+            best_distance = distance;
+        }
+    }
+    return best;
+}
+
 bool recover_loop_similarity(const BowDatabase& db,
                              const LoopKeyframe& query_keyframe,
                              const LoopKeyframe& candidate,
@@ -548,16 +571,27 @@ bool recover_loop_similarity(const BowDatabase& db,
     bool ok = false;
     const std::size_t gap =
         static_cast<std::size_t>(parameters.metric_neighbor_gap);
+    const int32_t gap_frames = parameters.metric_neighbor_gap;
     const bool query_neighbor_ok = db.keyframes.size() > gap;
     const bool candidate_neighbor_ok =
         candidate_index >= gap || candidate_index + gap < db.keyframes.size();
     if (query_neighbor_ok && candidate_neighbor_ok) {
-        const LoopKeyframe& query_neighbor =
-            db.keyframes[db.keyframes.size() - gap];
-        const LoopKeyframe& candidate_neighbor =
+        // A neighbor gap_frames before the query keyframe, and one before
+        // (or, when the candidate is too early, after) the candidate. For
+        // dense keyframes frame_id == index, so these land on the same
+        // keyframes as the previous index-based selection.
+        const std::size_t query_neighbor_index = nearest_keyframe_to_frame(
+            db, query_keyframe.frame_id - gap_frames);
+        const std::size_t candidate_neighbor_index =
             candidate_index >= gap
-                ? db.keyframes[candidate_index - gap]
-                : db.keyframes[candidate_index + gap];
+                ? nearest_keyframe_to_frame(db,
+                                            candidate.frame_id - gap_frames)
+                : nearest_keyframe_to_frame(db,
+                                            candidate.frame_id + gap_frames);
+        const LoopKeyframe& query_neighbor =
+            db.keyframes[query_neighbor_index];
+        const LoopKeyframe& candidate_neighbor =
+            db.keyframes[candidate_neighbor_index];
         const std::unordered_map<int32_t, cv::Point3f> query_local =
             triangulate_local_points(query_keyframe, query_neighbor, camera,
                                      parameters, debug_geometry);
