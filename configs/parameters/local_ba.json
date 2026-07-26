@@ -1,7 +1,7 @@
 {
   "mono_local_ba": {
     "enabled": 1,
-    "window": 10,
+    "window": 8,
     "interval": 5,
     "max_points": 250,
     "min_observations": 3,

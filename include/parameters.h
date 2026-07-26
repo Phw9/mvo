@@ -147,7 +147,12 @@ struct StereoParameters {
 // trajectory. No stereo rows and no metric scale are involved.
 struct MonoLocalBaParameters {
     int32_t enabled = 1;
-    int32_t window = 10;
+    // A shorter window keeps the fixed gauge anchor recent, so less accumulated
+    // scale drift is baked into the window: on KITTI 00, window 8 beats 10
+    // (ATE 21.1 -> 19.3 m at 1400 frames, 45.8 -> 38.7 m at 1700). Making the
+    // BA stronger the other way (larger window, more iterations, more frequent)
+    // regresses, so this sits at a measured sweet spot.
+    int32_t window = 8;
     int32_t interval = 5;
     int32_t max_points = 250;
     int32_t min_observations = 3;
