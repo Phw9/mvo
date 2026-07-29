@@ -7,6 +7,7 @@
 #include "../types.h"
 #include "../defs.h"
 #include "../image/image.h"
+#include "../feature2d/matching.h"
 
 #include <cstdint>
 #include <vector>
@@ -233,6 +234,33 @@ region is the strongest one there.
 ErrorCode adaptive_nonmax_suppression(
     const std::vector<Keypoint>& keypoints, int32_t target_count,
     float64_t tolerance, std::vector<int32_t>* selected);
+
+/*
+Copies keypoint pixel coordinates into an N-by-2 matrix (column 0 = x,
+column 1 = y).
+
+@param keypoints Input keypoints (N entries).
+@param out Output N-by-2 matrix (k64FC1); pre-created.
+@returns ErrorCode.
+*/
+ErrorCode keypoints_to_matrix(const std::vector<Keypoint>& keypoints,
+                              Matrix* out);
+
+/*
+Gathers the pixel coordinates of matched keypoints into two aligned
+M-by-2 matrices, one per side, in match order.
+
+@param query_keypoints Query-side keypoints.
+@param train_keypoints Train-side keypoints.
+@param matches Correspondences (query_idx / train_idx index the two sets).
+@param query_out Output M-by-2 query coordinates; pre-created.
+@param train_out Output M-by-2 train coordinates; pre-created.
+@returns ErrorCode (kOutOfBounds if a match index is out of range).
+*/
+ErrorCode matches_to_points(const std::vector<Keypoint>& query_keypoints,
+                            const std::vector<Keypoint>& train_keypoints,
+                            const std::vector<DescriptorMatch>& matches,
+                            Matrix* query_out, Matrix* train_out);
 
 /*
 Returns OpenCV-compatible ORB defaults.

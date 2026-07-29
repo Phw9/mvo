@@ -68,6 +68,23 @@ Fits a 2D ellipse with direct least-squares constraint.
 ErrorCode fit_ellipse(const Matrix* points, Vector* coeff_out);
 
 /*
+Converts ellipse conic coefficients [A,B,C,D,E,F]
+(A x^2 + B x y + C y^2 + D x + E y + F = 0) to geometric parameters via the
+eigen-decomposition of [[A, B/2],[B/2, C]].
+
+@param coeff Conic coefficients, length 6; must describe an ellipse
+       (B^2 - 4AC < 0).
+@param center_out Output centre [x, y], length 2.
+@param semi_major_out Output semi-major axis length.
+@param semi_minor_out Output semi-minor axis length.
+@param angle_out Output major-axis angle in radians (defined mod pi).
+@returns ErrorCode (kInvalidArgument when the conic is not an ellipse).
+*/
+ErrorCode ellipse_params(const Vector* coeff, Vector* center_out,
+                         float64_t* semi_major_out, float64_t* semi_minor_out,
+                         float64_t* angle_out);
+
+/*
 RANSAC plane fitting: returns the consensus plane and inlier mask.
 
 @param points Input points, N-by-3 (N >= 3).

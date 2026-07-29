@@ -53,6 +53,19 @@ Estimates a homography H from point correspondences using normalized DLT.
 ErrorCode find_homography(const Matrix* src, const Matrix* dst, Matrix* h_out);
 
 /*
+Applies a 3-by-3 homography to N 2D points: [x' y' w'] = H [x y 1], with the
+output point (x'/w', y'/w'). A point whose w' <= 0 maps behind the line at
+infinity and is masked -- its output row is set to NaN. Use a
+sign-normalised H (as find_homography / bev_homography produce).
+
+@param points Input points, N-by-2.
+@param h Homography, 3-by-3.
+@param out Output points, N-by-2; pre-created. Masked rows are NaN.
+@returns ErrorCode.
+*/
+ErrorCode apply_homography(const Matrix* points, const Matrix* h, Matrix* out);
+
+/*
 Estimates a fundamental matrix F from correspondences using normalized 8-point.
 
 @param x1 First-view points, N-by-2 (N >= 8).

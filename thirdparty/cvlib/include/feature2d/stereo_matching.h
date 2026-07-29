@@ -55,6 +55,38 @@ ErrorCode match_rectified_stereo(
     std::vector<DescriptorMatch>* matches);
 
 /*
+Row-constrained L2 matching for a rectified stereo pair, the float-descriptor
+(e.g. SIFT) counterpart of match_rectified_stereo. Candidates are gated by
+the same row / disparity constraints; the nearest gated descriptor by
+Euclidean distance wins, with the ratio / cross-check / max-distance filters
+applied on the L2 distances. Ties resolve to the lowest right index.
+
+@param left_keypoints Left keypoints, N-by-2 rectified pixels.
+@param left_desc Left descriptors, num_left * descriptor_len floats.
+@param num_left Number of left descriptors (== N).
+@param right_keypoints Right keypoints, M-by-2 rectified pixels.
+@param right_desc Right descriptors, num_right * descriptor_len floats.
+@param num_right Number of right descriptors (== M).
+@param descriptor_len Floats per descriptor (> 0).
+@param max_row_diff Row-difference gate in pixels (>= 0).
+@param min_disparity Lower disparity gate in pixels (>= 0).
+@param max_disparity Upper disparity gate (>= min_disparity).
+@param options Optional filters; null uses defaults.
+@param matches Output matches ordered by ascending left index.
+@returns ErrorCode.
+*/
+ErrorCode match_rectified_stereo_l2(
+    const Matrix* left_keypoints,
+    const float32_t* left_desc, int32_t num_left,
+    const Matrix* right_keypoints,
+    const float32_t* right_desc, int32_t num_right,
+    int32_t descriptor_len,
+    float64_t max_row_diff, float64_t min_disparity,
+    float64_t max_disparity,
+    const DescriptorMatchOptions* options,
+    std::vector<DescriptorMatch>* matches);
+
+/*
 Refines stereo disparities to subpixel accuracy with a one-dimensional
 Lucas-Kanade iteration along the rectified row.
 

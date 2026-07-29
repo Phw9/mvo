@@ -10,9 +10,60 @@
 #include "../image/image.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace cvlib {
 namespace image {
+
+/*
+Per-component statistics from connected_components.
+
+@param area Pixel count.
+@param x_min Left bound (min column).
+@param y_min Top bound (min row).
+@param x_max Right bound (max column).
+@param y_max Bottom bound (max row).
+@param centroid_x Mean column.
+@param centroid_y Mean row.
+*/
+struct ConnectedComponent {
+    int32_t area = 0;
+    int32_t x_min = 0;
+    int32_t y_min = 0;
+    int32_t x_max = 0;
+    int32_t y_max = 0;
+    float64_t centroid_x = 0.0;
+    float64_t centroid_y = 0.0;
+};
+
+/*
+Collects the coordinates of nonzero pixels in row-major order.
+
+@param src Source view, single channel, any pixel format.
+@param out Output N-by-2 (column 0 = x/col, column 1 = y/row); pre-created
+       with enough rows (rows*cols is a safe upper bound). Rows beyond the
+       nonzero count are left untouched.
+@param count Output total nonzero pixel count (may exceed out->rows, which
+       signals the buffer was too small to hold them all).
+@returns ErrorCode.
+*/
+ErrorCode nonzero_points(const ImageView* src, Matrix* out, int32_t* count);
+
+/*
+Labels connected components of a binary image (nonzero = foreground) with a
+deterministic two-pass union-find; labels are numbered 1..K in row-major
+order of first appearance, 0 is background.
+
+@param src Source view, single channel, any pixel format.
+@param connectivity 4 or 8.
+@param labels Output label matrix, rows-by-cols (k64FC1); pre-created.
+@param components Output per-label statistics (index k-1 for label k);
+       cleared then filled.
+@returns ErrorCode.
+*/
+ErrorCode connected_components(const ImageView* src, int32_t connectivity,
+                               Matrix* labels,
+                               std::vector<ConnectedComponent>* components);
 
 /*
 Converts a 3- or 4-channel colour image to single-channel luminance using
